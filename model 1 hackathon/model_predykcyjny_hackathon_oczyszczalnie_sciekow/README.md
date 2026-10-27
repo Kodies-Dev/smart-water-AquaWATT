@@ -172,7 +172,10 @@ Zatrzymanie: `Ctrl+C` w terminalu. Ręcznie (to samo): `cd aplikacja; streamlit 
    prognozy?” → RY_PZ1** (wykryte z nazwy, można zmienić).
 2. **Dane** – podgląd, statystyki, porównanie, łączenie, tabela przestawna, SQL (jak w Detektorze GUS).
 3. **Wykresy** – liniowy, histogram, boxplot, korelacje.
-4. **Prognoza** – kafelki o danych → **Na ile do przodu**: *Jutro (24 h)* · *Tydzień (7 dni)* · *2 miesiące (plan)* →
+4. **Wody przypadkowe** – ranking pompowni (infiltracja, dopływ opadowy, energia i koszt), zdarzenia (dzień, godziny, objętość).
+   **Anomalie** → **Wykryj anomalie** (dane z panelu albo cała historia pompowni) → zdarzenia + nietypowe doby ML, opis, Excel;
+   **Anomalie – szczegóły** – metoda, głosowanie modeli, walidacja.
+5. **Prognoza** – kafelki o danych → **Na ile do przodu**: *Jutro (24 h)* · *Tydzień (7 dni)* · *2 miesiące (plan)* →
    **Przygotuj prognozę** (1–2 min: plik był w treningu, więc model uczy się od nowa bez tego okresu) → prognoza,
    średni błąd, porównanie z „jak wczoraj”, opis, wykresy, **Excel**. Tydzień: każdy dzień osobnym modelem.
    2 miesiące: plan dobowy z przedziałem P10–P90 (80% dni) – do budżetu i zakupu energii.
@@ -209,6 +212,7 @@ ETL i trening powtarzasz tylko, gdy zmienią się dane (`python main.py etl`, `p
 | `python main.py horyzont [--dlugi]` | dokładność prognozy na 1–7 dni / planu 2-miesięcznego na teście |
 | `python main.py prognoza --plik X.csv [--obiekt RY_PZ1] [--uczciwie] [--dni 7]` | prognoza z pliku w konsoli (bez aplikacji) |
 | `python main.py anomalie` / `raport` | wykrywanie anomalii / raport słowny (patrz `anomalie/README.md`) |
+| `python main.py zdarzenia [--cena 1]` | **wody przypadkowe: zdarzenia (dzień, godziny, objętość, koszt) + ranking pompowni → `wyniki\`** |
 | `python main.py aplikacja` | aplikacja w przeglądarce |
 | `python main.py wszystko` | ETL + model + anomalie + raport |
 | `python testowe_csv.py` | pliki testowe w `Dane\testowe\` |

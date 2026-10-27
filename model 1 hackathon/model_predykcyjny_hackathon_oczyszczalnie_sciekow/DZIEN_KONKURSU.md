@@ -98,3 +98,38 @@ python main.py prognoza --trenuj --dni 7        # modele 1–7 dni + plan 2 mies
 python main.py horyzont ; python main.py horyzont --dlugi   # liczby na slajd „błąd vs dni naprzód”
 ```
 W aplikacji: **Prognoza → Na ile do przodu: Jutro / Tydzień / 2 miesiące**.
+
+## Priorytety (odpowiedź organizatorów)
+**1. Wody przypadkowe** (główny temat) → zakładki **Wody przypadkowe**, **Detekcja anomalii**, **Anomalie**
+(`python main.py anomalie` przed pokazem – flagi ML na wykresach). **2. Energia w korelacji z opadem** → Wody przypadkowe
+(kWh na 1 mm), Prognoza, Prognoza – szczegóły. Plan prezentacji: `PREZENTACJA.md`.
+
+## Dane finalne z Rudy (opad, energia godzinowa, SCADA co 20 s) – krok po kroku
+
+1. Skopiuj pliki do `Dane\RU\` **obok** dotychczasowych (nie podmieniaj): energia `energia_*-W.csv` / `energia_*-ZMP.csv`
+   (format `Data_godzina;Wartosc_kWh`), opad `intensywnosc_opadu*.csv`, SCADA `SCADA_w_*.csv` / `SCADA_ZMP_*.csv`.
+   Inna nazwa? Zmień ją na pasującą do wzorca. Powtórzone godziny: wygrywa plik później w kolejności alfabetycznej.
+2. ```powershell
+   [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $env:PYTHONIOENCODING = "utf-8"
+   python main.py etl 2>&1 | Tee-Object log_etl_final.txt
+   python main.py anomalie 2>&1 | Tee-Object log_anomalie_final.txt       # ML: IF + LOF + SVM, typy, walidacja
+   python main.py zdarzenia 2>&1 | Tee-Object log_zdarzenia_final.txt     # WYNIK: dzień, godziny, objętość, koszt (1 zł/kWh)
+   python main.py aplikacja
+   ```
+3. **Do oddania** (dysk w chmurze): `wyniki\zdarzenia_wod_przypadkowych.xlsx` (Zdarzenia / Podsumowanie / Metoda) + `.csv`,
+   `wyniki\wody_przypadkowe_ranking.csv`, `wyniki\anomalie\`, repozytorium z kodem.
+4. Prognoza energii z pliku Rudy: w aplikacji panel → wgraj `energia_*-W.csv` (format rozpoznawany sam) → pompownia RU_W.
+
+## Kryteria oceny (organizatorzy) → co pokazujemy
+| Kryterium | Pkt | U nas |
+|---|---|---|
+| Test ML / AI (9:00, 30 pytań, 15 min, wspólne konto) | 0–10 | – |
+| Przygotowanie danych i algorytmy | 0–15 | ETL (zmiana czasu, liczniki, odrzucone błędne okresy, kontrola z fakturami), baza bezdeszczowa, IF+LOF+SVM, XGBoost + Optuna |
+| Ocena modelu („model produkcyjny”) | 0–15 | walidacja na alarmach (lift 2,6×), powódź IX 2024, uczciwy test energii 13,0%, testy automatyczne, Docker |
+| Wizualizacja i interfejs | 0–10 | aplikacja: Wody przypadkowe (wykresy zdarzeń z opadem), Anomalie, Prognoza, raport Excel z wykresami |
+
+## Pokaz anomalii w aplikacji (temat główny)
+1. **Wody przypadkowe** – ranking, pompownia RU_W (dopływ opadowy), RY_PNB1 (infiltracja), zdarzenie godzina po godzinie.
+2. **Anomalie** → „Pompownia z bazy” → RU_W → **Wykryj anomalie** (~30 s) → kafelki, opis, oś czasu, tabela dzień / godziny / objętość
+   → **Raport anomalii w Excelu**. Dla danych finalnych: wgraj plik w panelu → „Dane z panelu (okres z pliku)”.
+3. **Anomalie – szczegóły** – głosowanie IF / LOF / SVM, przyczyny, walidacja na alarmach CH, znane zdarzenia.

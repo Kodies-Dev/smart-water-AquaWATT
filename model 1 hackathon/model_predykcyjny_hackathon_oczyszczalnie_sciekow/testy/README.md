@@ -17,6 +17,7 @@ i szum. Wyniki trafiają do folderu tymczasowego – testy nie ruszają `wyniki\
 | `test_strojenie.py` | walidacja krocząca nie dotyka testu, zapis parametrów Optuny, ich użycie przy treningu |
 | `test_horyzont.py` | modele na K dni lepsze od „jak K dni temu”, prognoza 7 dni ograniczona do wytrenowanych modeli, plan 2 miesiące: lepszy od „średniej z 4 tygodni”, przedział ~80%, sumy tygodni i miesięcy, aplikacja z wyborem horyzontu |
 | `test_raport_excel.py` | Excel jako dane do prognozy (4 warianty arkusza, zgodna suma), raport Excel: arkusze, ≥ 9 wykresów, formuły bez funkcji niedostępnych w starszym Excelu |
+| `test_wody_przypadkowe.py` | ranking pompowni, zdarzenia (dzień, godziny, objętość, koszt), eksport Excel, komenda `zdarzenia` |
 | `test_aplikacja.py` | aplikacja naprawdę uruchomiona (Streamlit AppTest): start, **wgranie plików w panelu**, wykrycie pompowni, Prognoza (podsumowanie, Excel), szczegóły, Model, Raport z atrapą LLM, anomalie z przełącznikiem |
 | `conftest.py`, `syntetyczne.py` | wspólne ustawienia i generator danych |
 

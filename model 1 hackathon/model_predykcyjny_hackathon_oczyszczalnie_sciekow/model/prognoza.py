@@ -114,6 +114,8 @@ def _rodzaj_pliku(sciezka, sep=None):
         pierwsza = fh.readline().decode("cp1250", errors="replace")
     if re.search(r"PPE|Rodzaj|Kompletno|Płatnik|P.atnik", pierwsza, re.I):
         return "raport"
+    if re.search(r"Data_godzina", pierwsza, re.I) and re.search(r"Wartosc_kWh|Warto.{1,4}_kWh", pierwsza, re.I):
+        return "energia Ruda"
     pola = pierwsza.strip().split(sep or ";")
     if len(pola) == 5 and re.match(r"\d{4}-\d{2}-\d{2}$", pola[0].strip()) and ":" in pola[1]:
         return "licznik"
@@ -146,6 +148,15 @@ def wczytaj_plik(sciezka, koniec_godziny=False, sep=None, kodowanie=None):
         e = e.drop_duplicates("czas").sort_values("czas")
         s = energia_koniec_godziny_na_utc(e["czas"], e["kwh"])
         return pd.DataFrame({"czas": s.index, "kwh": s.mask(s == 0).values}), rodzaj
+    if rodzaj == "energia Ruda":                                  # jak energia_24-26-W.csv: koniec godziny, czas lokalny
+        e = pd.read_csv(sciezka, sep=sep or ";", decimal=",", encoding=_kodowanie(sciezka, kodowanie), encoding_errors="replace")
+        e.columns = [str(c).strip() for c in e.columns]
+        kc = next(c for c in e.columns if c.lower() == "data_godzina")
+        kk = next(c for c in e.columns if "kwh" in c.lower())
+        e[kc] = pd.to_datetime(e[kc], errors="coerce")
+        e = e.dropna(subset=[kc])                                  # puste daty = wiosenna zmiana czasu
+        s = energia_koniec_godziny_na_utc(e[kc], pd.to_numeric(e[kk].astype(str).str.replace(",", "."), errors="coerce"))
+        return pd.DataFrame({"czas": s.index, "kwh": s.mask(s == 0).values}), rodzaj
     if rodzaj == "licznik":
         kod = _kodowanie(sciezka, kodowanie)
         with open(sciezka, encoding=kod, errors="replace") as fh:
@@ -162,8 +173,8 @@ def wczytaj_plik(sciezka, koniec_godziny=False, sep=None, kodowanie=None):
     return z_ramki(df, koniec_godziny), rodzaj
 
 
-NAZWY_CZAS = ("czas", "data_czas", "data i godzina", "data_godzina", "datetime", "timestamp", "time", "date_time")
-NAZWY_KWH = ("kwh", "energia_kwh", "zuzycie_kwh", "zużycie_kwh", "energia", "zuzycie", "zużycie", "energia [kwh]",
+NAZWY_CZAS = ("czas", "data_godzina", "data_czas", "data i godzina", "data_godzina", "datetime", "timestamp", "time", "date_time")
+NAZWY_KWH = ("kwh", "wartosc_kwh", "wartość_kwh", "energia_kwh", "zuzycie_kwh", "zużycie_kwh", "energia", "zuzycie", "zużycie", "energia [kwh]",
              "zużycie [kwh]", "wartosc_kwh", "kwh_h")
 
 
@@ -207,7 +218,8 @@ def wczytaj_excel(sciezka, koniec_godziny=False, wiersz_naglowka=1):
     if czas is None or kwh is None:
         raise ValueError("W arkuszu nie znaleziono kolumn czasu i zużycia (np. 'czas' i 'kwh') ani odczytów licznika "
                          "(data, godzina, wartosc).")
-    return z_ramki(df.rename(columns={czas: "czas", kwh: "kwh"})[["czas", "kwh"]], koniec_godziny), "excel (czas;kwh)"
+    koniec = koniec_godziny or czas == "data_godzina"               # format Rudy: znacznik = koniec godziny
+    return z_ramki(df.rename(columns={czas: "czas", kwh: "kwh"})[["czas", "kwh"]], koniec), "excel (czas;kwh)"
 
 
 def wczytaj_pliki(sciezki, koniec_godziny=False, sep=None, kodowanie=None):

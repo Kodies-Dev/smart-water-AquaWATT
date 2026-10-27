@@ -142,18 +142,39 @@ def _wape(kwh, p):
     return float(100 * np.abs(np.asarray(p) - kwh).sum() / kwh.sum())
 
 
+MIN_DNI, MIN_SUM = 60, 8              # mniej obserwacji pompowni w kuble -> przedział wspólny wszystkich pompowni
+
+
+def _kw(x):
+    return [float(x.quantile(POKRYCIE[0])), float(x.quantile(POKRYCIE[1]))]
+
+
 def _przedzialy(kal, p50):
-    """Empiryczne kwantyle (prawda / P50) per horyzont + dla sum 7 i 30 dni - przedział ok. 80% z konstrukcji."""
-    r = kal.assign(p50=p50, kubel=_kubel(kal["dni"].values))
-    dzienne = {k: [float(g["kwh"].div(g["p50"]).quantile(POKRYCIE[0])), float(g["kwh"].div(g["p50"]).quantile(POKRYCIE[1]))]
-               for k, g in r.groupby("kubel")}
-    sumy = {}
+    """Empiryczne kwantyle (prawda / P50) per horyzont i per pompownia (spokojna pompownia nie dziedziczy niepewności
+    pompowni z gwałtownymi szczytami po ulewach) + dla sum 7 i 30 dni. Zapas: wartości wspólne wszystkich pompowni."""
+    r = kal.assign(p50=p50, kubel=_kubel(kal["dni"].values), ratio=kal["kwh"] / p50)
+    dz = {"wspolne": {k: _kw(g["ratio"]) for k, g in r.groupby("kubel")}, "obiekty": {}}
+    for (oid, k), g in r.groupby(["obiekt_id", "kubel"]):
+        if len(g) >= MIN_DNI:
+            dz["obiekty"].setdefault(oid, {})[k] = _kw(g["ratio"])
+    sumy = {"wspolne": {}, "obiekty": {}}
     for n in (7, 30):
         okna = r[r["dni"] <= n].groupby(["obiekt_id", "start"]).filter(lambda x: len(x) == n)
-        s = okna.groupby(["obiekt_id", "start"])[["kwh", "p50"]].sum()
-        if len(s) >= 10:
-            sumy[str(n)] = [float((s["kwh"] / s["p50"]).quantile(POKRYCIE[0])), float((s["kwh"] / s["p50"]).quantile(POKRYCIE[1]))]
-    return {"dzienne": dzienne, "sumy": sumy}
+        sm = okna.groupby(["obiekt_id", "start"])[["kwh", "p50"]].sum().reset_index()
+        sm["ratio"] = sm["kwh"] / sm["p50"]
+        if len(sm) >= MIN_SUM:
+            sumy["wspolne"][str(n)] = _kw(sm["ratio"])
+        for oid, g in sm.groupby("obiekt_id"):
+            if len(g) >= MIN_SUM:
+                sumy["obiekty"].setdefault(oid, {})[str(n)] = _kw(g["ratio"])
+    return {"dzienne": dz, "sumy": sumy}
+
+
+def _q(tabela, oid, klucz, domyslnie=(1.0, 1.0)):
+    """Kwantyle dla pompowni (gdy policzone), inaczej wspólne (stary format meta: słownik bez podziału)."""
+    if "wspolne" not in tabela:
+        return tabela.get(klucz, list(domyslnie))
+    return tabela["obiekty"].get(oid, {}).get(klucz) or tabela["wspolne"].get(klucz, list(domyslnie))
 
 
 PUNKTY_KAL = (0.4, 0.55, 0.7, 0.85)   # okresy kroczące w części treningowej (ułamki startów per pompownia)
@@ -185,9 +206,17 @@ def _wybierz(t, X):
 KUBLY = ("1–7", "8–14", "15–30", "31–60")
 
 
-def _granice(q, kubel, s):
-    lo, hi = q.get(kubel, [1, 1])
+def _granice(lo_hi, s):
+    lo, hi = lo_hi
     return np.exp(s * np.log(min(lo, 1))), np.exp(s * np.log(max(hi, 1)))
+
+
+def _granice_wierszy(df, q_dzienne, s_kubla):
+    """Mnożniki P10 / P90 dla każdego wiersza (pompownia, horyzont)."""
+    k = _kubel(df["dni"].values)
+    gr = [_granice(_q(q_dzienne, o, x), s_kubla.get(x, 1.0) if isinstance(s_kubla, dict) else s_kubla)
+          for o, x in zip(df["obiekt_id"].values, k)]
+    return np.array([g[0] for g in gr]), np.array([g[1] for g in gr])
 
 
 def _poszerzenie(oos, metoda):
@@ -195,7 +224,7 @@ def _poszerzenie(oos, metoda):
     poszerzenie (w skali log), przy którym średnie pokrycie >= 80%. Uwzględnia niepewność rosnącą z horyzontem."""
     okresy = sorted(oos["okres"].unique())
     oos = oos.assign(kubel=_kubel(oos["dni"].values))
-    wynik = {}
+    wynik, cache = {}, {}
     for k in KUBLY:
         wynik[k] = 1.0
         if len(okresy) < 2:
@@ -206,7 +235,8 @@ def _poszerzenie(oos, metoda):
                 wcz, nast = oos[oos["okres"] < j], oos[(oos["okres"] == j) & (oos["kubel"] == k)]
                 if nast.empty:
                     continue
-                lo, hi = _granice(_przedzialy(wcz, wcz[f"p_{metoda}"].values)["dzienne"], k, s)
+                q = cache.setdefault(j, _przedzialy(wcz, wcz[f"p_{metoda}"].values)["dzienne"])
+                lo, hi = _granice_wierszy(nast, q, s)
                 p = nast[f"p_{metoda}"].values
                 pokr.append(((nast["kwh"].values >= p * lo) & (nast["kwh"].values <= p * hi)).mean())
             if not pokr or np.mean(pokr) >= POKRYCIE[1] - POKRYCIE[0]:
@@ -218,9 +248,8 @@ def _poszerzenie(oos, metoda):
 
 
 def _zastosuj(t, p50, przedzialy):
-    q, sz = przedzialy["dzienne"], przedzialy.get("poszerzenie", {})
-    gr = [_granice(q, x, sz.get(x, 1.0) if isinstance(sz, dict) else sz) for x in _kubel(t["dni"].values)]
-    return t.assign(p50=p50, p10=p50 * np.array([g[0] for g in gr]), p90=p50 * np.array([g[1] for g in gr]))
+    lo, hi = _granice_wierszy(t, przedzialy["dzienne"], przedzialy.get("poszerzenie", {}))
+    return t.assign(p50=p50, p10=p50 * lo, p90=p50 * hi)
 
 
 def trenuj(d, zapisz=True, katalog=None):
@@ -253,9 +282,11 @@ def wczytaj_model(katalog=None):
     return m, json.loads((k / "dlugoterminowy_meta.json").read_text(encoding="utf-8"))
 
 
-def _sumy(t, okres, przedzialy, n):
+def _sumy(t, okres, przedzialy, n, oid=None):
     g = t.groupby(okres).agg(od=("dzien", "min"), do=("dzien", "max"), dni_w_okresie=("dzien", "count"), p50=("p50", "sum"))
-    q, sz = przedzialy["sumy"].get(str(n)), przedzialy.get("poszerzenie", {})
+    q = _q(przedzialy["sumy"], oid, str(n), (None, None)) if przedzialy.get("sumy") else None
+    q = q if q and q[0] is not None else None
+    sz = przedzialy.get("poszerzenie", {})
     s = (sz.get("1–7" if n <= 7 else "15–30", 1.0) if isinstance(sz, dict) else sz)
     if q:
         g["p10"] = g["p50"] * np.exp(s * np.log(min(q[0], 1)))
@@ -288,8 +319,8 @@ def prognoza(d, oid, nowe=None, stacja=None, dni=HORYZONT_DNI):
         metoda = "srednia"                                           # nowa pompownia bez profilu - poziom z 28 dni
     t = _zastosuj(t, _p50(metoda, m, t, meta["kolumny"], prof), meta["przedzialy"])
     t = t[["dzien", "dni", "p10", "p50", "p90", "dzien_wolny", "swieto"]]
-    tyg = _sumy(t.assign(tydzien=(t["dni"] - 1) // 7 + 1), "tydzien", meta["przedzialy"], 7).drop(columns="dni_w_okresie")
-    mies = _sumy(t.assign(miesiac=t["dzien"].dt.to_period("M").astype(str)), "miesiac", meta["przedzialy"], 30) \
+    tyg = _sumy(t.assign(tydzien=(t["dni"] - 1) // 7 + 1), "tydzien", meta["przedzialy"], 7, oid).drop(columns="dni_w_okresie")
+    mies = _sumy(t.assign(miesiac=t["dzien"].dt.to_period("M").astype(str)), "miesiac", meta["przedzialy"], 30, oid) \
         .rename(columns={"dni_w_okresie": "dni"}).drop(columns=["od", "do"])
     return t, tyg, mies, start
 
@@ -310,6 +341,7 @@ def ocena(d, katalog=None):
         te[f"p_{me}"] = _p50(me, m, te, X, prof)
     te = _zastosuj(te, te[f"p_{metoda}"].values, przedzialy)
     te["rok_temu_kwh"] = te["rok_temu"] * te["poziom"]
+    szer_ob = (te.assign(s=(te["p90"] - te["p10"]) / te["p50"]).groupby("obiekt_id")["s"].median() * 100).round(0).to_dict()
     wiersze = []
     for k in KUBLY:
         s = te[_kubel(te["dni"].values) == k]
@@ -319,16 +351,18 @@ def ocena(d, katalog=None):
                             rok_temu=_wape(r["kwh"].values, r["rok_temu_kwh"]) if len(r) else np.nan,
                             pokrycie_p10_p90=float(100 * ((s["kwh"] >= s["p10"]) & (s["kwh"] <= s["p90"])).mean())))
     pelne = te[te["dni"] <= 30].groupby(["obiekt_id", "start"]).filter(lambda x: len(x) == 30)
-    sumy = pelne.groupby(["obiekt_id", "start"])[["kwh", "p50", "p_srednia"]].sum()
-    q = przedzialy["sumy"].get("30", [np.nan, np.nan])
+    sumy = pelne.groupby(["obiekt_id", "start"])[["kwh", "p50", "p_srednia"]].sum().reset_index()
     sz = przedzialy.get("poszerzenie", {}).get("15–30", 1.0)
-    q = [np.exp(sz * np.log(min(q[0], 1))), np.exp(sz * np.log(max(q[1], 1)))] if pd.notna(q[0]) else q
+    gr = [_granice(_q(przedzialy["sumy"], o, "30", (1.0, 1.0)), sz) for o in sumy["obiekt_id"]]
+    sumy["lo"], sumy["hi"] = [g[0] for g in gr], [g[1] for g in gr]
+    q = [0, 0]
     podsum = dict(metoda=metoda, opis_metody=OPISY[metoda], poszerzenie=przedzialy.get("poszerzenie", 1.0), wape_kalibracja={k: round(v, 2) for k, v in wyniki_kal.items()},
                   blad_sumy_30d=float(100 * ((sumy["p50"] - sumy["kwh"]).abs() / sumy["kwh"]).mean()) if len(sumy) else np.nan,
                   blad_sumy_30d_jak_ostatnie_4tyg=float(100 * ((sumy["p_srednia"] - sumy["kwh"]).abs() / sumy["kwh"]).mean()) if len(sumy) else np.nan,
-                  pokrycie_sumy_30d=float(100 * ((sumy["kwh"] >= sumy["p50"] * q[0]) & (sumy["kwh"] <= sumy["p50"] * q[1])).mean())
-                  if len(sumy) and pd.notna(q[0]) else np.nan,
-                  startow_testowych=int(te.groupby(["obiekt_id", "start"]).ngroups))
+                  pokrycie_sumy_30d=float(100 * ((sumy["kwh"] >= sumy["p50"] * sumy["lo"]) & (sumy["kwh"] <= sumy["p50"] * sumy["hi"])).mean())
+                  if len(sumy) else np.nan,
+                  startow_testowych=int(te.groupby(["obiekt_id", "start"]).ngroups),
+                  szerokosc_przedzialu_proc_p50=szer_ob)
     return pd.DataFrame(wiersze), podsum
 
 

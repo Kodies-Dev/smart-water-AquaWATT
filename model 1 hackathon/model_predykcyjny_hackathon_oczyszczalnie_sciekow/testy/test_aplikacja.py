@@ -34,7 +34,7 @@ def test_start_bez_danych():
 
 
 def test_detekcja_z_bazy_i_raport(d, monkeypatch):
-    monkeypatch.setenv("POKAZ_ANOMALIE", "1")                    # zakładki anomalii są schowane – włączamy na test
+    monkeypatch.setenv("POKAZ_ANOMALIE_GUS", "1")                    # zakładki anomalii są schowane – włączamy na test
     import sys
     sys.path.insert(0, str(ROOT / "aplikacja"))
     from backend_ml_llm.nasz_detektor import nasz_detektor
@@ -54,7 +54,7 @@ def test_detekcja_z_bazy_i_raport(d, monkeypatch):
 
 
 def test_detekcja_z_csv_godzinowego(d, monkeypatch):
-    monkeypatch.setenv("POKAZ_ANOMALIE", "1")
+    monkeypatch.setenv("POKAZ_ANOMALIE_GUS", "1")
     e = d["energia"][d["energia"]["obiekt_id"] == "RU_W"].merge(d["przeplyw"], on=["obiekt_id", "czas"], how="left")
     p = d["pogoda"][d["pogoda"]["stacja"] == "RU"][["czas", "opad_mm", "temp_c"]]
     csv = e.merge(p, on="czas", how="left").assign(czas=lambda x: x["czas"].dt.strftime("%Y-%m-%d %H:%M"))
@@ -93,17 +93,33 @@ def test_prognoza_szczegoly(d, tmp_path, monkeypatch):
     at.radio(key="ps_widok").set_value("godzinowo").run()
     assert not at.exception, [e.value for e in at.exception]
 
-def test_bez_zakladek_anomalii_domyslnie(d, monkeypatch):
-    monkeypatch.delenv("POKAZ_ANOMALIE", raising=False)
-    at = AppTest.from_file(APP, default_timeout=120)
+def test_zakladki_wody_przypadkowe_glownym_tematem(d, monkeypatch):
+    monkeypatch.delenv("POKAZ_ANOMALIE_GUS", raising=False)
+    at = AppTest.from_file(APP, default_timeout=180)
+    at.session_state["d_baza"] = d
     at.session_state["zbiory"] = {"x": pd.DataFrame({"a": [1]})}
     at.session_state["aktywny"] = "x"
     at.run()
+    assert not at.exception, [x.value for x in at.exception]
     etykiety = [t.label.strip() for t in at.tabs]
-    assert etykiety == ["Dane", "Wykresy", "Prognoza", "Prognoza – szczegoly", "Model", "Raport", "Pytanie",
-                        "Dobre praktyki"]
-    assert not any("Anomalie" in e or "Detekcja" in e for e in etykiety)
-
+    assert etykiety == ["Dane", "Wykresy", "Wody przypadkowe", "Anomalie", "Anomalie – szczegoly", "Prognoza", "Prognoza – szczegoly",
+                        "Model", "Raport", "Pytanie", "Dobre praktyki"]
+    assert any(m.label == "Najwięcej wód przypadkowych" for m in at.metric)            # zakładka wód przypadkowych policzona
+    assert len(at.session_state["wp_rank"]) == d["energia"]["obiekt_id"].nunique()
+    at.selectbox(key="wp_obiekt").set_value("RU_W").run()
+    assert not at.exception, [x.value for x in at.exception]
+    assert any("Infiltracja" in m.value for m in at.markdown)
+    assert any(b.label.startswith("Zdarzenia – wszystkie pompownie (Excel)") for b in at.get("download_button"))
+    at.selectbox(key="wp_zd_wybor").set_value(1).run()                                  # wykres godzinowy zdarzenia
+    assert not at.exception, [x.value for x in at.exception]
+    at.number_input(key="wp_cena").set_value(0.8).run()                                 # inna cena energii
+    assert not at.exception, [x.value for x in at.exception]
+    monkeypatch.setenv("POKAZ_ANOMALIE_GUS", "1")                                     # techniczne zakładki z GUS na życzenie
+    at2 = AppTest.from_file(APP, default_timeout=180)
+    at2.session_state["zbiory"] = {"x": pd.DataFrame({"a": [1]})}
+    at2.session_state["aktywny"] = "x"
+    at2.run()
+    assert any("(GUS)" in t.label for t in at2.tabs)
 
 def test_wyniki_modeli_i_raport_o_prognozie(d, tmp_path, monkeypatch):
     import sys
@@ -183,3 +199,33 @@ def test_widok_klienta_twoja_prognoza(d, tmp_path, monkeypatch):
     assert any(m.label.startswith("Prognoza na") for m in at.metric)
     assert any("przewidujemy" in m.value for m in at.markdown)               # opis prostym językiem
     assert len(at.get("download_button")) >= 2                               # Excel + CSV
+
+
+def test_anomalie_widok_klienta_i_szczegoly(d, monkeypatch):
+    monkeypatch.delenv("POKAZ_ANOMALIE_GUS", raising=False)
+    at = AppTest.from_file(APP, default_timeout=300)
+    at.session_state["d_baza"] = d
+    at.session_state["zbiory"] = {"x": pd.DataFrame({"a": [1]})}
+    at.session_state["aktywny"] = "x"
+    at.run()
+    assert any("Najpierw kliknij **Wykryj anomalie**" in i.value for i in at.info)          # szczegóły bez wyniku: wskazówka
+    # 1. cała historia pompowni z bazy
+    at.selectbox(key="an_obiekt").set_value("RU_W").run()
+    [b for b in at.button if b.label == "Wykryj anomalie"][0].click().run()
+    assert not at.exception, [e.value for e in at.exception]
+    w = at.session_state["an_wynik"]
+    assert w["meta"]["obiekt"] == "RU_W" and len(w["zd"]) > 0 and int(w["g"]["anomalia"].sum()) > 0
+    assert any(m.label == "Zdarzenia wód przypadkowych" for m in at.metric)
+    assert any("wykryliśmy" in m.value for m in at.markdown)                                  # opis prostym językiem
+    assert any(b.label == "Raport anomalii w Excelu (z wykresami)" for b in at.get("download_button"))
+    at.selectbox(key="an_wybor").set_value(1).run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert any(m.label == "Zgoda ≥ 2 z 3 (wynik)" for m in at.metric)                        # zakładka szczegółów
+    # 2. plik z panelu
+    at.file_uploader(key="pp_pliki").set_value([("RY_PZ1_test.csv", _plik_csv(d, "RY_PZ1", 8), "text/csv")]).run()
+    [b for b in at.button if b.label == "Wczytaj pliki"][0].click().run()
+    at.radio(key="an_zrodlo").set_value("Dane z panelu (okres z pliku)").run()
+    [b for b in at.button if b.label == "Wykryj anomalie"][0].click().run()
+    assert not at.exception, [e.value for e in at.exception]
+    w = at.session_state["an_wynik"]
+    assert w["meta"]["obiekt"] == "RY_PZ1" and w["meta"]["z_pliku"] and len(w["g"]) <= 8 * 7 + 1

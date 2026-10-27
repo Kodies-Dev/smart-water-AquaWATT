@@ -182,8 +182,9 @@ def _plan(P, d, oid, nowe, stacja):
                f"(„średnia z ostatnich 4 tygodni”: {r1['jak_ostatnie_4tyg']:.1f}% / {r4['jak_ostatnie_4tyg']:.1f}%); przedział objął "
                f"prawdziwą wartość w {r1['pokrycie_p10_p90']:.0f}% dni pierwszego tygodnia i {r4['pokrycie_p10_p90']:.0f}% dni 31–60.")
     jak += f" Metoda planu (wybrana na danych historycznych): {meta_planu.get('opis_metody', 'model ML')}."
+    s4 = tyg[tyg["tydzien"] <= 4]
     st.markdown(f"Najbardziej prawdopodobne zużycie w najbliższych 4 tygodniach to **{t4['p50'].sum():,.0f} kWh** "
-                f"(ostrożny zakres {t4['p10'].sum():,.0f}–{t4['p90'].sum():,.0f} kWh).".replace(",", " ") + jak)
+                f"(tygodniowo zwykle {s4['p10'].mean():,.0f}–{s4['p90'].mean():,.0f} kWh).".replace(",", " ") + jak)
     Wykresy.show(Wykresy.fig_plan(dz), key="tp_plan_wykres")
     c1, c2 = st.columns(2)
     with c1:
@@ -195,7 +196,8 @@ def _plan(P, d, oid, nowe, stacja):
         st.markdown("#### Miesiąc po miesiącu")
         st.dataframe(mies.rename(columns={"miesiac": "miesiąc", "p50": "prognoza [kWh]", "p10": "od [kWh]", "p90": "do [kWh]"}).round(0),
                      width="stretch", hide_index=True)
-    st.caption("Zakresy tygodniowe i miesięczne to suma dziennych granic - zakres ostrożny (szerszy niż typowe wahania).")
+    st.caption("Zakresy tygodni i miesięcy pochodzą z rzeczywistych błędów sum tej pompowni w przeszłości (ok. 80% sum "
+               "mieści się w zakresie) - dni deszczowe i suche częściowo się znoszą, więc zakres sumy jest węższy niż suma dziennych granic.")
     out = dz.assign(dzien=dz["dzien"].dt.strftime("%Y-%m-%d")).round(1)
     c1, c2 = st.columns(2)
     with c1:

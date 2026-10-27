@@ -261,3 +261,108 @@ def _kopiuj_wykres(wj, r1, r2):
     ch.set_categories(Reference(wj, min_col=1, min_row=r1, max_row=r2))
     ch.legend = None
     return ch
+
+
+def raport_excel_anomalii(meta, s, g, zd, metoda_txt=None):
+    """Raport anomalii / wód przypadkowych: Podsumowanie (formuły, cena w komórce) · Zdarzenia (dzień, godziny, objętość) ·
+    Dni nietypowe (ML) · Dobowo (przepływ / energia vs baza, opad) · Metoda. Wykresy natywne."""
+    wb = Workbook()
+    wp = wb.active
+    wp.title = "Podsumowanie"
+    oid = meta["obiekt"]
+    _tytul(wp, f"Wody przypadkowe i anomalie – pompownia {oid}",
+           f"Okres {meta['od']:%d.%m.%Y} – {meta['do']:%d.%m.%Y} · wygenerowano {datetime.now():%d.%m.%Y %H:%M} · "
+           f"liczby w tabeli liczone formułami z arkuszy obok")
+    wp["A4"], wp["B4"] = "Cena energii [zł/kWh]", float(meta["cena"])
+    wp["A4"].font, wp["B4"].font = _f(bold=True), _f(color="0000FF", bold=True)
+    wp["B4"].fill = PatternFill("solid", fgColor="FFFF00")
+    wp["C4"] = "komórka do zmiany – koszty w arkuszach przeliczą się same (organizatorzy: 1 zł/kWh)"
+    wp["C4"].font = _f(size=8, italic=True, color="595959")
+    przeplyw = zd["objetosc_m3"].notna().any() if len(zd) else meta.get("przeplyw", False)
+
+    # ---------------- Zdarzenia
+    wz = wb.create_sheet("Zdarzenia")
+    _tytul(wz, "Zdarzenia wód przypadkowych – dzień, godziny wystąpienia, objętość",
+           "Godziny z przepływem (bez przepływomierza: energią) wyraźnie ponad godzinową bazę bezdeszczową")
+    wiersze = []
+    for i, r in enumerate(zd.itertuples(index=False), start=4):
+        wiersze.append([pd.Timestamp(r.dzien).to_pydatetime(), r.godziny, int(r.czas_trwania_h),
+                        None if pd.isna(r.objetosc_m3) else float(r.objetosc_m3), float(r.nadwyzka_kwh),
+                        f"=E{i}*Podsumowanie!$B$4", float(r.opad_mm), r.typ, "TAK" if getattr(r, "ml_anomalia", False) else ""])
+    z1, z2 = _tabela(wz, 3, 1, ["dzień", "godziny", "godzin", "objętość ponad bazę [m³]", "nadwyżka energii [kWh]", "koszt [zł]",
+                                "opad w trakcie i 6 h przed [mm]", "typ", "doba wskazana przez ML"], wiersze,
+                     {0: "dd.mm.yyyy", 3: "#,##0.0", 4: "#,##0.0", 5: "#,##0.00", 6: "0.0"}, [12, 22, 8, 16, 16, 11, 16, 34, 14])
+    if len(zd):
+        wz.cell(row=z2 + 1, column=1, value="Razem").font = _f(bold=True)
+        for c, L in ((3, "C"), (4, "D"), (5, "E"), (6, "F")):
+            wz.cell(row=z2 + 1, column=c, value=f"=SUM({L}{z1}:{L}{z2})").font = _f(bold=True)
+        _wykres(BarChart, "Wielkość zdarzeń" + (" [m³ ponad bazę]" if przeplyw else " [kWh ponad bazę]"),
+                "m³" if przeplyw else "kWh", wz, 1, [4 if przeplyw else 5], z1, z2, [CZERWONY], "K3", szer=24)
+    # ---------------- Dni nietypowe (ML)
+    wa = wb.create_sheet("Dni nietypowe (ML)")
+    _tytul(wa, "Nietypowe doby – zespół Isolation Forest + LOF + One-Class SVM (≥ 2 z 3)")
+    a = g[g["anomalia"] == True].sort_values("dzien")
+    _tabela(wa, 3, 1, ["dzień", "typ", "głosy modeli", "rodzaj (panel)", "główna przyczyna", "opis"],
+            [[pd.Timestamp(r.dzien).to_pydatetime(), r.typ, int(r.glosy), getattr(r, "Rodzaj_Anomalii", ""),
+              getattr(r, "glowna_cecha", ""), getattr(r, "opis", "")] for r in a.itertuples(index=False)],
+            {0: "dd.mm.yyyy"}, [12, 30, 10, 26, 22, 110])
+    # ---------------- Dobowo
+    wd = wb.create_sheet("Dobowo")
+    kol, baza, jedn = ("m3", "m3_baza", "m³") if przeplyw else ("kwh", "kwh_baza", "kWh")
+    _tytul(wd, f"Dobowo: {'przepływ' if przeplyw else 'energia'} vs baza bezdeszczowa i opad",
+           "Nadwyżka = rzeczywiste − baza (formuła); dodatnia nadwyżka to wody przypadkowe")
+    gg = g.sort_values("dzien")
+    wiersze = [[pd.Timestamp(r["dzien"]).to_pydatetime(), None if pd.isna(r[kol]) else round(float(r[kol]), 2),
+                None if pd.isna(r[baza]) else round(float(r[baza]), 2), f'=IF(OR(B{i}="",C{i}=""),"",B{i}-C{i})',
+                round(float(r["opad_doba"]), 1) if pd.notna(r["opad_doba"]) else None, "TAK" if r["anomalia"] == True else "",
+                r["typ"] if r["anomalia"] == True else ""] for i, (_, r) in enumerate(gg.iterrows(), start=4)]
+    d1, d2 = _tabela(wd, 3, 1, ["dzień", f"rzeczywiste [{jedn}]", f"baza bezdeszczowa [{jedn}]", f"nadwyżka [{jedn}]", "opad [mm]",
+                                "anomalia ML", "typ"], wiersze, {0: "dd.mm.yyyy", 1: "#,##0", 2: "#,##0", 3: "#,##0;-#,##0;-", 4: "0.0"},
+                     [12, 15, 18, 13, 10, 12, 30])
+    ch = _wykres(LineChart, f"{'Przepływ' if przeplyw else 'Energia'} dobowo vs baza bezdeszczowa", f"{jedn} / doba", wd, 1, [2, 3],
+                 d1, d2, ["1A1A1A", ZIELONY], "I3", szer=26)
+    wd._charts.remove(ch)
+    op = BarChart()
+    op.add_data(Reference(wd, min_col=5, min_row=d1 - 1, max_row=d2), titles_from_data=True)
+    op.series[0].graphicalProperties.solidFill = "9DC3E6"
+    op.y_axis.axId, op.y_axis.title, op.y_axis.crosses = 200, "mm", "max"
+    ch += op
+    wd.add_chart(ch, "I3")
+    # ---------------- Podsumowanie: tabela formuł + opis + wykres
+    Z = "Zdarzenia"
+    kl = [("Zdarzeń wód przypadkowych", f"=COUNT({Z}!C{z1}:C{max(z2, z1)})", "0"),
+          ("– w tym po opadach", f'=COUNTIF({Z}!H{z1}:H{max(z2, z1)},"dopływ opadowy")', "0"),
+          ("Godzin z wodami przypadkowymi", f"=SUM({Z}!C{z1}:C{max(z2, z1)})", "0"),
+          ("Objętość ponad bazę [m³]", f"=SUM({Z}!D{z1}:D{max(z2, z1)})", "#,##0"),
+          ("Nadwyżka energii [kWh]", f"=SUM({Z}!E{z1}:E{max(z2, z1)})", "#,##0"),
+          ("Koszt [zł]", f"=SUM({Z}!F{z1}:F{max(z2, z1)})", "#,##0"),
+          ("Nietypowe doby (ML)", f"=COUNTA('Dni nietypowe (ML)'!A4:A{max(4, 3 + len(a))})" if len(a) else 0, "0"),
+          ("Dób w okresie", f"=COUNT(Dobowo!A{d1}:A{d2})", "0")]
+    r1, r2 = _tabela(wp, 6, 1, ["co", "wartość"], [[k, v] for k, v, _ in kl], None, [34, 16])
+    for i, (_, _, fmt) in enumerate(kl):
+        wp.cell(row=r1 + i, column=2).number_format = fmt
+    if s is not None:
+        wp.cell(row=r2 + 2, column=1, value="Opis").font = _f(bold=True, color=GRANAT)
+        wp.merge_cells(start_row=r2 + 3, start_column=1, end_row=r2 + 16, end_column=3)
+        c = wp.cell(row=r2 + 3, column=1, value=s["tekst"].replace("**", ""))
+        c.font, c.alignment = _f(size=10), Alignment(wrap_text=True, vertical="top")
+    wp.column_dimensions["C"].width = 60
+    if len(zd):
+        ch = BarChart()
+        ch.title, ch.height, ch.width = "Zdarzenia – wielkość", 7.5, 16
+        ch.add_data(Reference(wz, min_col=4 if przeplyw else 5, min_row=z1 - 1, max_row=z2), titles_from_data=True)
+        ch.series[0].graphicalProperties.solidFill = ch.series[0].graphicalProperties.line.solidFill = CZERWONY
+        ch.set_categories(Reference(wz, min_col=1, min_row=z1, max_row=z2))
+        ch.legend = None
+        wp.add_chart(ch, "E4")
+    # ---------------- Metoda
+    wm = wb.create_sheet("Metoda")
+    _tytul(wm, "Metoda")
+    wm.column_dimensions["A"].width = 130
+    for i, t in enumerate(metoda_txt or [], start=3):
+        c = wm.cell(row=i, column=1, value=t)
+        c.font, c.alignment = _f(), Alignment(wrap_text=True, vertical="top")
+    wb.calculation.fullCalcOnLoad = True
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()

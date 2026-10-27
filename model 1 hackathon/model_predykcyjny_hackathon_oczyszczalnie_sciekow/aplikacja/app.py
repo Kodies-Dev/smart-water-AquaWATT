@@ -28,6 +28,9 @@ from frontend_streamlit.styles import Wyglad
 from frontend_streamlit import panel_prognozy          # panel_boczny.py z GUS zostaje, ten jest pod predykcje
 from frontend_streamlit import zakladka_dane
 from frontend_streamlit import zakladka_wykresy
+from frontend_streamlit import zakladka_wody_przypadkowe
+from frontend_streamlit import zakladka_anomalie_klient
+from frontend_streamlit import zakladka_anomalie_szczegoly
 from frontend_streamlit import zakladka_twoja_prognoza
 from frontend_streamlit import zakladka_prognoza_szczegoly
 from frontend_streamlit import zakladka_model
@@ -35,9 +38,10 @@ from frontend_streamlit import zakladka_raport_prognozy
 from frontend_streamlit import zakladka_pytanie_prognozy
 from frontend_streamlit import zakladka_jak_czytac
 
-# Na razie aplikacja skupia sie na PREDYKCJI. Zakladki anomalii (Detekcja, Anomalie) sa schowane, nie usuniete:
-# POKAZ_ANOMALIE=1 (zmienna srodowiskowa) albo True ponizej - wracaja.
-POKAZ_ANOMALIE = os.environ.get("POKAZ_ANOMALIE") == "1"
+# Glowny temat konkursu (odpowiedz organizatorow): WODY PRZYPADKOWE, drugi: prognoza energii w korelacji z opadem.
+# Anomalie maja widok dla klienta i szczegoly (jak prognoza). Techniczne zakladki z Detektora GUS (Detekcja anomalii,
+# Anomalie (GUS)) - tylko z POKAZ_ANOMALIE_GUS=1.
+POKAZ_ANOMALIE = os.environ.get("POKAZ_ANOMALIE_GUS") == "1"
 
 st.set_page_config(page_title="prognoza energii - pompownie sciekow", page_icon=None, layout="wide")
 
@@ -59,7 +63,7 @@ panel_prognozy.renderuj()
 
 # ---------------------------------------------------------------- main
 
-st.title("Prognoza zuzycia energii pompowni sciekow")
+st.title("Wody przypadkowe i zuzycie energii pompowni sciekow")
 
 if st.session_state.get("d_baza") is None:
     st.warning("Brak polaczenia z baza danych (historia, pogoda, kalendarz potrzebne do prognozy) - uruchom baze "
@@ -69,13 +73,15 @@ if not st.session_state.zbiory:
     st.stop()  # zatrzymuje dalsze wykonanie skryptu
 
 # kolejnosc: dane (wczytane w panelu) -> ich wykresy -> prognoza -> szczegoly prognozy -> model -> raport, pytanie, praktyki
-zakladki = [(" Dane", zakladka_dane), (" Wykresy", zakladka_wykresy), (" Prognoza", zakladka_twoja_prognoza),
+zakladki = [(" Dane", zakladka_dane), (" Wykresy", zakladka_wykresy), (" Wody przypadkowe", zakladka_wody_przypadkowe),
+            (" Anomalie", zakladka_anomalie_klient), (" Anomalie – szczegoly", zakladka_anomalie_szczegoly),
+            (" Prognoza", zakladka_twoja_prognoza),
             (" Prognoza – szczegoly", zakladka_prognoza_szczegoly), (" Model", zakladka_model),
             (" Raport", zakladka_raport_prognozy), (" Pytanie", zakladka_pytanie_prognozy),
             (" Dobre praktyki", zakladka_jak_czytac)]
 if POKAZ_ANOMALIE:
     from frontend_streamlit import zakladka_detekcja, zakladka_anomalie
-    zakladki[5:5] = [(" Detekcja anomalii", zakladka_detekcja), (" Anomalie", zakladka_anomalie)]   # przed Modelem
+    zakladki[5:5] = [(" Detekcja anomalii (GUS)", zakladka_detekcja), (" Anomalie (GUS)", zakladka_anomalie)]
 
 for tab, (_, modul) in zip(st.tabs([n for n, _ in zakladki]), zakladki):
     with tab:

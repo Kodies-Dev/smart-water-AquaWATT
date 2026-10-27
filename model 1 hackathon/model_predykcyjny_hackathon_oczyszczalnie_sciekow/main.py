@@ -7,6 +7,7 @@ Użycie:
     python main.py anomalie                  wykrywanie anomalii (zespół IF + LOF + One-Class SVM)
     python main.py raport [--model qwen3:8b] raport słowny o anomaliach (Ollama; bez niej – same fakty)
     python main.py strojenie [--proby 30]    Optuna z walidacją kroczącą; test otwierany raz, na końcu
+    python main.py zdarzenia [--cena 1]     wody przypadkowe: zdarzenia (dzień, godziny, objętość, koszt) → wyniki/
     python main.py horyzont [--dni 7]        jak dokładna jest prognoza na 1..7 dni naprzód (test)
     python main.py prognoza --trenuj         trenuje model na wszystkich danych i zapisuje do modele/ (--dni 7: modele 1..7)
     python main.py prognoza --plik X.csv     backtest na pliku + prognoza na kolejne 24 h (--obiekt, --stacja)
@@ -23,7 +24,7 @@ for _strumien in (sys.stdout, sys.stderr):
     except (AttributeError, ValueError):
         pass
 
-TRYBY = ("etl", "model", "strojenie", "horyzont", "anomalie", "raport", "prognoza", "aplikacja", "wszystko")
+TRYBY = ("etl", "model", "strojenie", "horyzont", "zdarzenia", "anomalie", "raport", "prognoza", "aplikacja", "wszystko")
 
 
 def main():
@@ -46,6 +47,12 @@ def main():
     if tryb in ("model", "wszystko"):
         from model.eksperymenty import main as model
         model(reszta)
+    if tryb == "zdarzenia":
+        from pathlib import Path as _Path
+        sys.path.insert(0, str(_Path(__file__).resolve().parent / "aplikacja"))
+        from backend_ml_llm.wody_przypadkowe import main as zdarzenia
+        zdarzenia(reszta)
+        return
     if tryb == "horyzont":
         from model.horyzont import main as horyzont
         horyzont(reszta)

@@ -35,6 +35,9 @@ pompownia” + miasto). Pozostałe pliki ładują się jak w GUS – do podgląd
 
 | # | Zakładka | Plik | Co pokazuje |
 |---|---|---|---|
+| – | **Wody przypadkowe** (główny temat) | `zakladka_wody_przypadkowe.py` + `backend_ml_llm/wody_przypadkowe.py` | ranking pompowni: udział wód przypadkowych w objętości i energii, infiltracja (przepływ nocny w suche dni), dopływ opadowy (nadwyżka na 1 mm, korelacja), kWh/rok; wykres pompowni z bazą bezdeszczową i deszczem, korelacja przepływu i energii z opadem, trend infiltracji, dni do sprawdzenia |
+| – | **Anomalie** (widok dla klienta, jak Prognoza) | `zakladka_anomalie_klient.py` + `backend_ml_llm/anomalie_klient.py` | dane z panelu (okres z pliku) albo cała historia pompowni z bazy → **Wykryj anomalie** → kafelki (zdarzenia, objętość, koszt, doby ML), opis prostym językiem (Python), oś czasu z bazą bezdeszczową, deszczem i anomaliami ML, wielkość zdarzeń, **tabela dzień / godziny / objętość**, zdarzenie godzina po godzinie, **raport Excel z wykresami** (cena energii w komórce, formuły) |
+| – | **Anomalie – szczegóły** (jak Prognoza – szczegóły) | `zakladka_anomalie_szczegoly.py` | metoda i dane wejściowe, głosowanie IF / LOF / SVM, typy i główne przyczyny, korelacja z opadem, trend infiltracji, walidacja na alarmach CH i znanych zdarzeniach, dane dobowe CSV |
 | 1 | **Dane** | `zakladka_dane.py` (GUS, bez zmian) | podgląd, statystyki, porównanie zbiorów, łączenie tabel, nazwy kolumn, tabela przestawna, SQL |
 | 2 | **Wykresy** | `zakladka_wykresy.py` (GUS, bez zmian) | liniowy, histogram, boxplot, korelacje |
 | 3 | **Prognoza** | `zakladka_twoja_prognoza.py` | **widok dla klienta**: kafelki o danych → „Przygotuj prognozę” → prognoza 24 h, średni błąd (% i kWh), porównanie z „jak wczoraj”, opis prostym językiem (Python, bez LLM), wykresy, dzień po dniu, **Excel i CSV**; sama włącza uczciwe sprawdzenie |
@@ -45,7 +48,8 @@ pompownia” + miasto). Pozostałe pliki ładują się jak w GUS – do podgląd
 | 7 | **Pytanie** | `zakladka_pytanie_prognozy.py` | pytania o model i prognozę (LLM na policzonych faktach) |
 | 8 | **Dobre praktyki** | `zakladka_jak_czytac.py` | jak przygotować plik, miary błędu, uczciwy backtest, gdzie model się myli |
 
-**Anomalie** (Detekcja, Anomalie – nasz potok z `anomalie/`) są schowane: `$env:POKAZ_ANOMALIE = "1"`.
+Kolejność: Dane · Wykresy · **Wody przypadkowe** · **Anomalie** · **Anomalie – szczegóły** · Prognoza · Prognoza – szczegóły · Model ·
+Raport · Pytanie · Dobre praktyki. Techniczne zakładki z Detektora GUS (Detekcja anomalii, Anomalie (GUS)): `$env:POKAZ_ANOMALIE_GUS = "1"`.
 
 ## Co zmieniono względem Detektora GUS
 

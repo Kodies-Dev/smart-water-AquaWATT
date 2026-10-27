@@ -1,0 +1,36 @@
+# --- dane (duże pliki od organizatorów, nie do repozytorium)
+Dane/
+
+# --- generowane przez program (odtwarzalne: ETL, model, prognoza)
+cache/
+wyniki/
+modele/
+*.log
+log_*.txt
+*_log.txt
+backup_*/
+
+# --- Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# --- Jupyter
+.ipynb_checkpoints/
+
+# --- Streamlit (prywatne ustawienia; config.toml zostaje w repozytorium)
+.streamlit/secrets.toml
+aplikacja/.streamlit/secrets.toml
+
+# --- IDE i system
+.idea/
+.vscode/
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# --- pliki tymczasowe Office
+~$*

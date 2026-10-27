@@ -14,22 +14,29 @@ MIN_PROBEK = 60  # ~180 próbek/h przy kroku 20 s; mniej = godzina niepewna
 def energia(log):
     wynik = []
     for kod, oid in OBIEKT.items():
-        f = RU / f"energia_24-26-{kod}.csv"
-        e = pd.read_csv(f, sep=";", decimal=",", **READ)
-        e["Data_godzina"] = pd.to_datetime(e["Data_godzina"], errors="coerce")
-        n0 = len(e)
-        e = e.dropna(subset=["Data_godzina"])          # puste daty = wiosenna zmiana czasu
-        log(f.name, oid, n0, len(e), "bez pustych dat")
-        s = energia_koniec_godziny_na_utc(e["Data_godzina"], e["Wartosc_kWh"])
-        s = s.mask(s == 0)
-        wynik.append(do_tabeli(s, oid, "kwh", zrodlo="licznik energii"))
+        # wszystkie pliki energii pompowni (np. energia_24-26-W.csv + nowe dane finalne energia_*-W.csv); powtórzone godziny:
+        # wygrywa plik nowszy (później w kolejności alfabetycznej)
+        czesci = []
+        for f in sorted(RU.glob(f"energia_*-{kod}.csv")):
+            e = pd.read_csv(f, sep=";", decimal=",", **READ)
+            e["Data_godzina"] = pd.to_datetime(e["Data_godzina"], errors="coerce")
+            n0 = len(e)
+            e = e.dropna(subset=["Data_godzina"])          # puste daty = wiosenna zmiana czasu
+            log(f.name, oid, n0, len(e), "bez pustych dat")
+            s = energia_koniec_godziny_na_utc(e["Data_godzina"], e["Wartosc_kWh"])
+            czesci.append(s.mask(s == 0))
+        if czesci:
+            s = pd.concat(czesci)
+            s = s[~s.index.duplicated(keep="last")].sort_index()
+            wynik.append(do_tabeli(s, oid, "kwh", zrodlo="licznik energii"))
     return pd.concat(wynik, ignore_index=True)
 
 
 def opad(log):
     """Intensywność [mm/h] co 1 min (zapis tylko przy opadzie), UTC -> mm na godzinę. Brak wpisu = 0 mm."""
-    df = pd.read_csv(RU / "intensywnosc_opadu.csv", sep=";", decimal=",", **READ)
-    df.columns = ["czas", "mmh"]
+    pliki = sorted(RU.glob("intensywnosc_opadu*.csv"))            # także nowe pliki opadu z danych finalnych
+    df = pd.concat([pd.read_csv(f, sep=";", decimal=",", **READ).iloc[:, :2].set_axis(["czas", "mmh"], axis=1) for f in pliki])
+    df = df.drop_duplicates("czas", keep="last")
     df["czas"] = pd.to_datetime(df["czas"], errors="coerce").dt.tz_localize("UTC")
     df = df.dropna()
     s = (df.set_index("czas")["mmh"] / 60).resample("1h").sum()

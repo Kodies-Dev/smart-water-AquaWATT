@@ -54,3 +54,20 @@ def test_raport_excel_z_wykresami(d, tmp_path, monkeypatch):
     wzory = [c.value for ws in wb.worksheets for row in ws.iter_rows() for c in row if isinstance(c.value, str) and c.value.startswith("=")]
     assert len(wzory) > 100 and not any(f in " ".join(wzory) for f in ("XLOOKUP", "FILTER(", "SORT(", "UNIQUE("))
     assert all("MAXIFS" not in f or "_xlfn.MAXIFS" in f for f in wzory)          # funkcje po 2007 z prefiksem
+
+
+def test_format_energii_rudy(tmp_path):
+    """Dane testowe z Rudy (Data_godzina;Wartosc_kWh, przecinek dziesiętny, znacznik = koniec godziny) – CSV i Excel."""
+    import model.prognoza as P
+    lok = pd.date_range("2026-09-01 01:00", periods=24 * 40, freq="h")
+    kwh = 10 + 5 * np.sin(np.arange(len(lok)) * 2 * np.pi / 24)
+    p = tmp_path / "energia_26-W.csv"
+    pd.DataFrame({"Data_godzina": lok.strftime("%Y-%m-%d %H:%M:%S"),
+                  "Wartosc_kWh": [f"{v:.3f}".replace(".", ",") for v in kwh]}).to_csv(p, sep=";", index=False)
+    nowe, rodzaj = P.wczytaj_plik(p)
+    assert rodzaj == "energia Ruda" and len(nowe) == len(lok) and abs(nowe["kwh"].sum() - kwh.sum()) < 0.5
+    assert nowe["czas"].min() == pd.Timestamp("2026-08-31 22:00", tz="UTC")          # koniec 01:00 CEST = początek 22:00 UTC
+    x = tmp_path / "energia.xlsx"
+    pd.DataFrame({"Data_godzina": lok, "Wartosc_kWh": kwh}).to_excel(x, index=False)
+    nx, _ = P.wczytaj_plik(x)
+    assert nx["czas"].min() == nowe["czas"].min() and abs(nx["kwh"].sum() - kwh.sum()) < 0.5

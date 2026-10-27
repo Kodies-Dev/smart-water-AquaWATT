@@ -65,7 +65,7 @@ def _pompownia(dp):
 
 def renderuj():
     """Caly panel boczny. Wywolac raz, przed zakladkami."""
-    st.sidebar.title("Prognoza energii")
+    st.sidebar.title("Wody przypadkowe i energia")
 
     uploaded = st.sidebar.file_uploader(
         "Wgraj pliki CSV lub Excel", type=["csv", "txt", "xlsx", "xls"], accept_multiple_files=True, key="pp_pliki",
