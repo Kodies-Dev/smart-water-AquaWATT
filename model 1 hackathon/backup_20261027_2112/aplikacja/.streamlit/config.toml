@@ -1,0 +1,28 @@
+# Motyw jasny w stylu Excel/GUS. Wymusza jasne kolory niezaleznie od tego,
+# czy system uzytkownika ma wlaczony tryb ciemny.
+[theme]
+base = "light"
+primaryColor = "#1F4E79"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F2F2F2"
+textColor = "#1A1A1A"
+linkColor = "#1F4E79"
+borderColor = "#BFBFBF"
+showWidgetBorder = true
+baseRadius = "none"
+buttonRadius = "none"
+font = "sans-serif"
+
+[client]
+# "viewer" chowa Deploy/rerun/clear cache, ale zostawia sam pasek nagłówka -
+# w nim mieszka tez strzalka do przywracania zwinietego panelu bocznego.
+# "minimal" usuwa caly pasek gdy nic w nim nie zostaje i razem z nim znika
+# ta strzalka - dlatego NIE uzywamy minimal.
+toolbarMode = "viewer"
+showErrorDetails = true
+
+[browser]
+gatherUsageStats = false
+
+[server]
+headless = true

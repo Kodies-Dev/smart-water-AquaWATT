@@ -1,6 +1,12 @@
 # Jak przygotować prezentację
 
-Plan na **~6 minut slajdów + ~3 minuty demo + pytania**. Jeśli organizatorzy podadzą inny czas – skracaj slajdy 3 i 8,
+**Wystąpienie do 10 minut** (odpowiedź 7.1) – użyj **szablonu organizatorów** (miał być na dysku do 24.10.2026).
+Plan: **~6,5 min slajdów + ~3 min demo**, pytania jury osobno.
+
+**Oceniane wprost (odpowiedź 4.5): przedziały niepewności, wyjaśnialność, podejście hybrydowe** – mamy wszystkie trzy, pokaż je
+jawnie: P10–P90 w planie (skalibrowane ~80%), główna przyczyna każdej anomalii + ważność cech prognozy + głosowanie 3 modeli,
+hybryda = reguły (baza bezdeszczowa, zdarzenia) + ML (IF / LOF / SVM, XGBoost). Zadanie wg 6.2–6.3: **korelacja opadów ze
+zużyciem energii i koszt, który niepotrzebnie ponosi przedsiębiorstwo** (1 zł/kWh); użytkownik: operator / analityk. Jeśli organizatorzy podadzą inny czas – skracaj slajdy 3 i 8,
 nigdy demo i wyników. Wszystkie liczby poniżej pochodzą z uruchomień na prawdziwych danych (stan 26.10.2026) – przed
 konkursem odśwież je z `log_model.txt` i zakładki **Model**.
 
@@ -86,6 +92,12 @@ Układ: **problem → dane → wody przypadkowe (metoda + wyniki + ML) → energ
   dzień / godziny / objętość + doby ML, opis, Excel) → **Anomalie – szczegóły** (głosowanie modeli, walidacja) →
   **Prognoza** (jutro / tydzień / plan 2 miesiące) → **Raport w Excelu z wykresami**.
 - Dane od klienta: plik CSV/Excel z licznika (rozpoznawany sam); reszta (pogoda, kalendarz) automatycznie.
+
+### Slajd 8b – Dlaczego można nam ufać (kryterium 4.5)
+- **Hybryda:** reguły z fizyki pompowni (baza bezdeszczowa, przepływ nocny) + ML (3 modele głosują) – dwie niezależne metody dają
+  te same liczby (PZ1 14.09.2024: 6 453 m³ zdarzenia godzinowe vs 6 403 m³ anomalia dobowa ML; CH_T 28.07.2025: 4 810 vs 4 810).
+- **Wyjaśnialność:** każda anomalia ma typ, główną przyczynę i opis; prognoza – ważność cech; raport opisowy z liczb.
+- **Niepewność:** plan miesięczny z przedziałem P10–P90 (skalibrowany na danych: ~80% dni), błąd prognozy vs liczba dni naprzód.
 
 ### Slajd 9 – Wartość i dalsze kroki
 - **Gdzie szukać**: lista pompowni i dni do inspekcji (infiltracja vs podłączenia), **ile to kosztuje** (kWh/rok).

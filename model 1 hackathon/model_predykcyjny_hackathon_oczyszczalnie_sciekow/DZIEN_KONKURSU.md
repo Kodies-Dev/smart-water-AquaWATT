@@ -104,7 +104,18 @@ W aplikacji: **Prognoza → Na ile do przodu: Jutro / Tydzień / 2 miesiące**.
 (`python main.py anomalie` przed pokazem – flagi ML na wykresach). **2. Energia w korelacji z opadem** → Wody przypadkowe
 (kWh na 1 mm), Prognoza, Prognoza – szczegóły. Plan prezentacji: `PREZENTACJA.md`.
 
-## Dane finalne z Rudy (opad, energia godzinowa, SCADA co 20 s) – krok po kroku
+## Dane finalne RYBNIK (test!) – przepływ i energia PZ1, PNB1 2025–2026, BEZ opadu
+
+Odpowiedzi organizatorów (1.3): w teście tylko **przepływ ścieków (m³) i zużycie energii** dwóch pompowni Rybnika; opad zdobywamy
+sami – mamy Open-Meteo dla punktu Rybnik w `cache\` (pobrane do ~21.10.2026, działa bez internetu na miejscu).
+1. Pliki do `Dane\RY\` obok dotychczasowych: przepływ `PZ1_*.txt` / `PNB1_*.txt` (format jak `PZ1_2024.txt`), energia – raport
+   dystrybutora (CSV z nagłówkiem PPE / Płatnik; w nazwie musi być **PZ1** albo **PNB1**). Inny format? Plik energii można też wgrać
+   wprost w aplikacji (panel → rozpozna licznik / raport / czas;kwh / Excel).
+2. `python main.py etl` → `python main.py anomalie` → `python main.py zdarzenia` → `python main.py aplikacja` (jak niżej).
+3. Okresy błędnych danych (np. III 2024 PZ1) – nie analizować (ETL odcina; nowe – dopisać w `etl/config.py` `ODETNIJ_PRZEPLYW_DO`).
+4. Wynik: `wyniki\zdarzenia_wod_przypadkowych.xlsx` (dzień, godziny, objętość, koszt) + raporty z aplikacji.
+
+## Dane finalne z Rudy (gdyby były: opad, energia godzinowa, SCADA co 20 s) – krok po kroku
 
 1. Skopiuj pliki do `Dane\RU\` **obok** dotychczasowych (nie podmieniaj): energia `energia_*-W.csv` / `energia_*-ZMP.csv`
    (format `Data_godzina;Wartosc_kWh`), opad `intensywnosc_opadu*.csv`, SCADA `SCADA_w_*.csv` / `SCADA_ZMP_*.csv`.

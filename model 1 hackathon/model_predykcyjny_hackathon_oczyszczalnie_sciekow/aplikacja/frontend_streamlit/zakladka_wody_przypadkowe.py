@@ -163,8 +163,9 @@ def renderuj():
                f"Typ „dopływ opadowy”, gdy w trakcie lub {W.OKNO_OPADU_H} h przed spadł ≥ 1 mm deszczu. Okres błędnej kalibracji "
                f"przepływomierza RY_PZ1 (III 2024) odrzucony, zgodnie z zaleceniem organizatorów.")
     if len(zd):
-        ps = W.podsumowanie_zdarzen(zd).rename(columns={"obiekt": "pompownia", "zdarzen": "zdarzeń", "opadowych": "opadowych",
-                                                        "bez_opadu": "bez opadu", "godzin": "godzin", "objetosc_m3": "objętość [m³]",
+        ps = W.podsumowanie_zdarzen(zd).rename(columns={"obiekt": "pompownia", "zdarzen": "zdarzeń", "opadowych": "w czasie opadu",
+                                                        "po_opadach": "po opadach", "bez_opadu": "bez opadu",
+                                                        "dni_ze_zdarzeniami": "dni", "godzin": "godzin", "objetosc_m3": "objętość [m³]",
                                                         "nadwyzka_kwh": "nadwyżka energii [kWh]", "koszt_zl": "koszt [zł]"})
         st.dataframe(ps.round(0), width="stretch", hide_index=True)
         c1, c2 = st.columns(2)
@@ -198,7 +199,7 @@ def renderuj():
         Wykresy.show(_fig_noc(g), key="wp_noc")
     zo = zd[zd["obiekt"] == oid].sort_values("poczatek", ascending=False) if len(zd) else pd.DataFrame()
     if len(zo):
-        st.markdown(f"#### Zdarzenia {oid} ({len(zo)}; opadowych {int((zo['typ'] == 'dopływ opadowy').sum())})")
+        st.markdown(f"#### Zdarzenia {oid} ({zo['zdarzenie'].nunique()} zdarzeń, {len(zo)} dni)")
         typy = st.multiselect("Typ", sorted(zo["typ"].unique()), default=sorted(zo["typ"].unique()), key="wp_typy")
         zo = zo[zo["typ"].isin(typy)]
         widok = zo.rename(columns={"dzien": "dzień", "godziny": "godziny", "czas_trwania_h": "godzin", "objetosc_m3": "objętość [m³]",

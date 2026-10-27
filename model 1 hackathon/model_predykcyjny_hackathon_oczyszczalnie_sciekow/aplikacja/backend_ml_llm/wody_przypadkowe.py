@@ -145,7 +145,12 @@ CENA_ZL_KWH = 1.0               # cena energii do kalkulacji (organizatorzy: PWi
 PROG_PROC = 25.0                # godzina z wodami przypadkowymi: nadwyżka >= 25% bazy godzinowej ...
 PROG_MAD = 3.0                  # ... i >= 3 odchylenia (MAD) nadwyżki w suche godziny
 MIN_GODZIN = 2                  # zdarzenie: co najmniej 2 godziny (przerwa 1 h nie dzieli zdarzenia)
-OKNO_OPADU_H = 6                # opad liczony w trakcie zdarzenia i 6 h przed
+OKNO_OPADU_H = 12               # „dopływ opadowy”: >= 1 mm w trakcie zdarzenia albo 12 h przed
+OKNO_PO_OPADZIE_H = 72          # „dopływ po opadach”: opóźniony spływ / infiltracja do 3 dni po deszczu
+WYGLADZENIE_H = 3               # średnia krocząca 3 h – cykle włącz / wyłącz pomp się uśredniają
+MIN_OBJ_DOBY = 0.05             # zdarzenie: objętość >= 5% typowej doby (drobne wahania odrzucone)
+TYP_OPAD, TYP_PO, TYP_BEZ = "dopływ opadowy", "dopływ po opadach (spływ opóźniony / infiltracja)", \
+    "dopływ bez opadu (infiltracja / zrzut / awaria)"
 
 
 def _opad_godz(d, oid, idx):
@@ -186,8 +191,10 @@ def zdarzenia_obiektu(d, dz, oid, cena=CENA_ZL_KWH):
     opad = _opad_godz(d, oid, idx)
     baza, sucho = _baza_godzinowa(seria, baza_d, kal, opad)
     nad = seria - baza
-    mad = (nad[sucho] - nad[sucho].median()).abs().median()
-    flaga = (nad >= PROG_PROC / 100 * baza) & (nad >= PROG_MAD * 1.4826 * mad) & seria.notna()
+    nad_s = nad.rolling(WYGLADZENIE_H, center=True, min_periods=1).mean()          # cykle pomp się uśredniają
+    baza_s = pd.Series(baza, index=idx).rolling(WYGLADZENIE_H, center=True, min_periods=1).mean()
+    mad = (nad_s[sucho] - nad_s[sucho].median()).abs().median()
+    flaga = (nad_s >= PROG_PROC / 100 * baza_s) & (nad_s >= PROG_MAD * 1.4826 * mad) & seria.notna()
     # łączenie godzin w zdarzenia (przerwa 1 h nie dzieli)
     f = flaga.astype(int)
     f = ((f + f.shift(1, fill_value=0).where(f.shift(-1, fill_value=0) == 1, 0)) > 0)
@@ -197,24 +204,34 @@ def zdarzenia_obiektu(d, dz, oid, cena=CENA_ZL_KWH):
         kb, _ = _baza_godzinowa(e.reindex(idx), g["kwh_baza"], kal, opad)
         kwh_baza_h = pd.Series(kb, index=idx)
     ek = e.reindex(idx)
-    wiersze = []
+    kwh_nad = (ek - (kwh_baza_h if kwh_baza_h is not None else pd.Series(baza, index=idx))).clip(lower=0)
+    min_obj = MIN_OBJ_DOBY * float(np.nanmedian(baza_d))
+    wiersze, nr_zd = [], 0
     for _, h in nr.groupby(nr):
         t0, t1 = h.index.min(), h.index.max()
-        if len(h) < MIN_GODZIN:
+        if len(h) < MIN_GODZIN or float(nad.loc[t0:t1].clip(lower=0).sum()) < min_obj:
             continue
-        objetosc = float(nad.loc[t0:t1].clip(lower=0).sum())
-        if objetosc < 0.02 * float(np.nanmedian(baza_d)):
-            continue
-        op = opad.loc[t0 - pd.Timedelta(hours=OKNO_OPADU_H):t1]
-        en = float((ek.loc[t0:t1] - (kwh_baza_h.loc[t0:t1] if kwh_baza_h is not None else pd.Series(baza, index=idx).loc[t0:t1]))
-                   .clip(lower=0).sum())
-        l0, l1 = t0.tz_convert("Europe/Warsaw"), (t1 + pd.Timedelta(hours=1)).tz_convert("Europe/Warsaw")
-        wiersze.append(dict(obiekt=oid, dzien=l0.strftime("%Y-%m-%d"), godziny=f"{l0:%H:%M}–{l1:%H:%M}" + ("" if l0.date() == l1.date() else f" ({l1:%d.%m})"),
-                            poczatek=l0.tz_localize(None), koniec=l1.tz_localize(None), czas_trwania_h=int(len(h)),
-                            objetosc_m3=round(objetosc, 1) if przeplyw else np.nan, nadwyzka_kwh=round(en, 1),
-                            koszt_zl=round(en * cena, 2), opad_mm=round(float(op.sum()), 1), max_opad_mm_h=round(float(op.max()), 1),
-                            typ="dopływ opadowy" if op.sum() >= 1.0 else "dopływ bez opadu (infiltracja / zrzut / awaria)",
-                            zrodlo="przepływomierz" if przeplyw else "energia (brak przepływomierza)"))
+        nr_zd += 1
+        op_zd = opad.loc[t0 - pd.Timedelta(hours=OKNO_OPADU_H):t1]
+        op_po = opad.loc[t0 - pd.Timedelta(hours=OKNO_PO_OPADZIE_H):t1]
+        typ = TYP_OPAD if op_zd.sum() >= 1.0 else (TYP_PO if op_po.sum() >= 5.0 else TYP_BEZ)
+        z0, z1 = t0.tz_convert("Europe/Warsaw"), (t1 + pd.Timedelta(hours=1)).tz_convert("Europe/Warsaw")
+        godz = pd.Series(h.index)
+        lok = godz.dt.tz_convert("Europe/Warsaw")
+        for dzien, gd in godz.groupby(lok.dt.date.values):                    # jeden wiersz na dzień zdarzenia
+            g0, g1 = gd.min(), gd.max()
+            l0, l1 = g0.tz_convert("Europe/Warsaw"), (g1 + pd.Timedelta(hours=1)).tz_convert("Europe/Warsaw")
+            op = opad.loc[g0 - pd.Timedelta(hours=OKNO_OPADU_H if gd.min() == t0 else 0):g1]
+            objetosc = float(nad.loc[gd].clip(lower=0).sum())
+            en = float(kwh_nad.loc[gd].sum())
+            wiersze.append(dict(obiekt=oid, dzien=str(dzien), godziny=f"{l0:%H:%M}–{l1:%H:%M}" if l1.hour or l1.date() == l0.date()
+                                else f"{l0:%H:%M}–24:00", poczatek=l0.tz_localize(None), koniec=l1.tz_localize(None),
+                                czas_trwania_h=int(len(gd)), objetosc_m3=round(objetosc, 1) if przeplyw else np.nan,
+                                nadwyzka_kwh=round(en, 1), koszt_zl=round(en * cena, 2), opad_mm=round(float(op.sum()), 1),
+                                max_opad_mm_h=round(float(op.max()), 1) if len(op) else 0.0, typ=typ,
+                                zdarzenie=f"{oid}-{nr_zd:04d}", zdarzenie_od=z0.strftime("%Y-%m-%d %H:%M"),
+                                zdarzenie_do=z1.strftime("%Y-%m-%d %H:%M"),
+                                zrodlo="przepływomierz" if przeplyw else "energia (brak przepływomierza)"))
     return pd.DataFrame(wiersze), pd.DataFrame({"czas": idx, "wartosc": seria.values, "baza": baza, "opad_mm": opad.values,
                                                 "flaga": flaga.values, "jednostka": jedn})
 
@@ -234,8 +251,10 @@ def podsumowanie_zdarzen(z):
     if z is None or z.empty:
         return pd.DataFrame()
     g = z.groupby("obiekt")
-    return pd.DataFrame({"zdarzen": g.size(), "opadowych": g["typ"].apply(lambda t: (t == "dopływ opadowy").sum()),
-                         "bez_opadu": g["typ"].apply(lambda t: (t != "dopływ opadowy").sum()),
+    zd = z.drop_duplicates("zdarzenie").groupby("obiekt")["typ"]
+    return pd.DataFrame({"zdarzen": zd.size(), "opadowych": zd.apply(lambda t: (t == TYP_OPAD).sum()),
+                         "po_opadach": zd.apply(lambda t: (t == TYP_PO).sum()), "bez_opadu": zd.apply(lambda t: (t == TYP_BEZ).sum()),
+                         "dni_ze_zdarzeniami": g.size(),
                          "godzin": g["czas_trwania_h"].sum(), "objetosc_m3": g["objetosc_m3"].sum(min_count=1),
                          "nadwyzka_kwh": g["nadwyzka_kwh"].sum(), "koszt_zl": g["koszt_zl"].sum()}).reset_index()
 
@@ -247,13 +266,17 @@ def excel_zdarzen(z, cena=CENA_ZL_KWH):
     zz = z.drop(columns=["poczatek", "koniec"], errors="ignore").rename(columns={
         "obiekt": "pompownia", "dzien": "dzień", "godziny": "godziny wystąpienia", "czas_trwania_h": "czas trwania [h]",
         "objetosc_m3": "objętość ponad bazę [m³]", "nadwyzka_kwh": "nadwyżka energii [kWh]", "koszt_zl": f"koszt [zł] (przy {cena} zł/kWh)",
-        "opad_mm": "opad w trakcie i 6 h przed [mm]", "max_opad_mm_h": "max opad [mm/h]", "typ": "typ", "zrodlo": "źródło"})
+        "opad_mm": f"opad w trakcie (pierwszy dzień: i {OKNO_OPADU_H} h przed) [mm]", "max_opad_mm_h": "max opad [mm/h]",
+        "typ": "typ", "zdarzenie": "nr zdarzenia", "zdarzenie_od": "zdarzenie od", "zdarzenie_do": "zdarzenie do", "zrodlo": "źródło"})
     metoda = pd.DataFrame({"opis": [
         "Baza bezdeszczowa: typowy przepływ (albo energia) w suche dni – ten sam dzień tygodnia, ostatnie tygodnie; godzinowo × "
         "typowy rozkład godzin suchej doby (osobno dni robocze i wolne).",
         f"Godzina z wodami przypadkowymi: nadwyżka >= {PROG_PROC:.0f}% bazy i >= {PROG_MAD:.0f} odchylenia typowe (MAD) z suchych godzin.",
-        f"Zdarzenie: >= {MIN_GODZIN} kolejne godziny (przerwa 1 h nie dzieli). Objętość = suma nadwyżki ponad bazę.",
-        f"Typ: dopływ opadowy, gdy w trakcie zdarzenia lub {OKNO_OPADU_H} h przed spadło >= 1 mm; inaczej dopływ bez opadu.",
+        f"Porównanie na średniej kroczącej {WYGLADZENIE_H} h (cykle włącz/wyłącz pomp się uśredniają); objętość z rzeczywistych godzin.",
+        f"Zdarzenie: >= {MIN_GODZIN} kolejne godziny (przerwa 1 h nie dzieli), objętość >= {MIN_OBJ_DOBY:.0%} typowej doby. "
+        "Wiersz raportu = jeden dzień zdarzenia: dzień, godziny tego dnia, objętość tego dnia; numer i zakres całego zdarzenia obok.",
+        f"Typ: dopływ opadowy (>= 1 mm w trakcie lub {OKNO_OPADU_H} h przed); dopływ po opadach (>= 5 mm w {OKNO_PO_OPADZIE_H} h przed – "
+        "opóźniony spływ, infiltracja po deszczu); inaczej dopływ bez opadu (infiltracja / zrzut / awaria).",
         f"Koszt: nadwyżka energii ponad bazę × {cena} zł/kWh (stała cena energii – informacja organizatorów).",
         "Okres błędnej kalibracji przepływomierza RY_PZ1 (III 2024) odrzucony w ETL – zgodnie z zaleceniem organizatorów."]})
     with pd.ExcelWriter(buf, engine="openpyxl") as xw:
@@ -289,8 +312,8 @@ def main(argv=None):
     print(f"\n== Zdarzenia (dzień, godziny, objętość) – razem {len(z)}")
     print(podsumowanie_zdarzen(z).round(1).to_string(index=False))
     print("\n  największe:")
-    print(z.sort_values("nadwyzka_kwh", ascending=False).head(10)[["obiekt", "dzien", "godziny", "czas_trwania_h", "objetosc_m3",
-                                                                      "nadwyzka_kwh", "koszt_zl", "opad_mm", "typ"]].to_string(index=False))
+    print(z.sort_values("nadwyzka_kwh", ascending=False).head(12)[["obiekt", "dzien", "godziny", "czas_trwania_h", "objetosc_m3",
+                                                                      "nadwyzka_kwh", "koszt_zl", "opad_mm", "typ", "zdarzenie"]].to_string(index=False))
     WYNIKI.mkdir(parents=True, exist_ok=True)
     z.drop(columns=["poczatek", "koniec"]).to_csv(WYNIKI / "zdarzenia_wod_przypadkowych.csv", index=False, sep=";", decimal=",",
                                                    encoding="utf-8-sig")

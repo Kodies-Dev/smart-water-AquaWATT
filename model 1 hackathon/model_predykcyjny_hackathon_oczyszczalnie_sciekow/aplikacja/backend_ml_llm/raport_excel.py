@@ -288,16 +288,17 @@ def raport_excel_anomalii(meta, s, g, zd, metoda_txt=None):
     for i, r in enumerate(zd.itertuples(index=False), start=4):
         wiersze.append([pd.Timestamp(r.dzien).to_pydatetime(), r.godziny, int(r.czas_trwania_h),
                         None if pd.isna(r.objetosc_m3) else float(r.objetosc_m3), float(r.nadwyzka_kwh),
-                        f"=E{i}*Podsumowanie!$B$4", float(r.opad_mm), r.typ, "TAK" if getattr(r, "ml_anomalia", False) else ""])
+                        f"=E{i}*Podsumowanie!$B$4", float(r.opad_mm), r.typ, "TAK" if getattr(r, "ml_anomalia", False) else "",
+                        getattr(r, "zdarzenie", ""), getattr(r, "zdarzenie_od", ""), getattr(r, "zdarzenie_do", "")])
     z1, z2 = _tabela(wz, 3, 1, ["dzień", "godziny", "godzin", "objętość ponad bazę [m³]", "nadwyżka energii [kWh]", "koszt [zł]",
-                                "opad w trakcie i 6 h przed [mm]", "typ", "doba wskazana przez ML"], wiersze,
-                     {0: "dd.mm.yyyy", 3: "#,##0.0", 4: "#,##0.0", 5: "#,##0.00", 6: "0.0"}, [12, 22, 8, 16, 16, 11, 16, 34, 14])
+                                "opad [mm]", "typ", "doba wskazana przez ML", "nr zdarzenia", "zdarzenie od", "zdarzenie do"], wiersze,
+                     {0: "dd.mm.yyyy", 3: "#,##0.0", 4: "#,##0.0", 5: "#,##0.00", 6: "0.0"}, [12, 14, 8, 16, 16, 11, 10, 40, 12, 14, 17, 17])
     if len(zd):
         wz.cell(row=z2 + 1, column=1, value="Razem").font = _f(bold=True)
         for c, L in ((3, "C"), (4, "D"), (5, "E"), (6, "F")):
             wz.cell(row=z2 + 1, column=c, value=f"=SUM({L}{z1}:{L}{z2})").font = _f(bold=True)
-        _wykres(BarChart, "Wielkość zdarzeń" + (" [m³ ponad bazę]" if przeplyw else " [kWh ponad bazę]"),
-                "m³" if przeplyw else "kWh", wz, 1, [4 if przeplyw else 5], z1, z2, [CZERWONY], "K3", szer=24)
+        _wykres(BarChart, "Wielkość zdarzeń (dzień)" + (" [m³ ponad bazę]" if przeplyw else " [kWh ponad bazę]"),
+                "m³" if przeplyw else "kWh", wz, 1, [4 if przeplyw else 5], z1, z2, [CZERWONY], "N3", szer=24)
     # ---------------- Dni nietypowe (ML)
     wa = wb.create_sheet("Dni nietypowe (ML)")
     _tytul(wa, "Nietypowe doby – zespół Isolation Forest + LOF + One-Class SVM (≥ 2 z 3)")
@@ -330,8 +331,10 @@ def raport_excel_anomalii(meta, s, g, zd, metoda_txt=None):
     wd.add_chart(ch, "I3")
     # ---------------- Podsumowanie: tabela formuł + opis + wykres
     Z = "Zdarzenia"
-    kl = [("Zdarzeń wód przypadkowych", f"=COUNT({Z}!C{z1}:C{max(z2, z1)})", "0"),
-          ("– w tym po opadach", f'=COUNTIF({Z}!H{z1}:H{max(z2, z1)},"dopływ opadowy")', "0"),
+    J = f"{Z}!J{z1}:J{max(z2, z1)}"
+    kl = [("Zdarzeń wód przypadkowych", f'=SUMPRODUCT(({J}<>"")/COUNTIF({J},{J}&""))' if len(zd) else 0, "0"),
+          ("Dni ze zdarzeniami", f"=COUNT({Z}!C{z1}:C{max(z2, z1)})", "0"),
+          ("– dni w czasie opadu", f'=COUNTIF({Z}!H{z1}:H{max(z2, z1)},"dopływ opadowy")', "0"),
           ("Godzin z wodami przypadkowymi", f"=SUM({Z}!C{z1}:C{max(z2, z1)})", "0"),
           ("Objętość ponad bazę [m³]", f"=SUM({Z}!D{z1}:D{max(z2, z1)})", "#,##0"),
           ("Nadwyżka energii [kWh]", f"=SUM({Z}!E{z1}:E{max(z2, z1)})", "#,##0"),

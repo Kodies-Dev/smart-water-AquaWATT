@@ -1,0 +1,3 @@
+wersja: 2026-10-27_2001
+zawartosc: zdarzenia - wygladzenie 3 h, wiersz na dzien, 3 typy; poprawka main.py zdarzenia
+testy: 34 passed

@@ -44,11 +44,16 @@ def wczytaj_raport(f, kodowanie="cp1250"):
 def energia(log):
     """Raporty godzinowe dystrybutora. Obiekt z nazwy pliku. Znacznik = koniec godziny."""
     czesci = {}
-    for f in sorted(RY.glob("Rap_godzinowy*.csv")):
-        m = re.search(r"-\s*(\w+)\s*$", f.stem)
-        oid = OBIEKT.get(m.group(1)) if m else None
+    for f in sorted(RY.glob("*.csv")):
+        # każdy CSV z nagłówkiem raportu dystrybutora (dane finalne mogą mieć inną nazwę niż Rap_godzinowy_...)
+        with open(f, "rb") as fh:
+            naglowek = fh.readline().decode("cp1250", errors="replace")
+        if not re.search(r"PPE|Kompletno|P.atnik", naglowek, re.I):
+            continue
+        m = re.search(r"(PNB1|PZ1)", f.stem, re.I)
+        oid = OBIEKT.get(m.group(1).upper()) if m else None
         if oid is None:
-            log(f.name, None, 0, 0, "POMINIĘTY – nieznany obiekt w nazwie pliku")
+            log(f.name, None, 0, 0, "POMINIĘTY – w nazwie pliku brak PZ1 / PNB1")
             continue
         e, n0 = wczytaj_raport(f)
         log(f.name, oid, n0, len(e), f"PPE: {e['ppe'].unique().tolist()}")

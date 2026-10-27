@@ -15,7 +15,7 @@ from frontend_streamlit.narzedzia import Narzedzia
 from frontend_streamlit.wykresy import Wykresy
 from frontend_streamlit.zakladka_wody_przypadkowe import _fig_przeplyw, _fig_zdarzenie
 
-KOLORY_TYPOW = {"dopływ opadowy": "#2E75B6", "dopływ bez opadu (infiltracja / zrzut / awaria)": "#C00000"}
+KOLORY_TYPOW = {W.TYP_OPAD: "#2E75B6", W.TYP_PO: "#9DC3E6", W.TYP_BEZ: "#C00000"}
 MIASTA = {"RY": "Rybnik", "RU": "Ruda Śląska", "CH": "Chorzów"}
 
 
@@ -71,7 +71,8 @@ def renderuj():
     st.divider()
     st.markdown(f"### Wynik dla pompowni {oid}")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Zdarzenia wód przypadkowych", f"{s['zdarzen']}", f"{s['opadowych']} po opadach", delta_color="off")
+    c1.metric("Zdarzenia wód przypadkowych", f"{s['zdarzen']}", f"{s['opadowych'] + s['po_opadach']} związanych z deszczem",
+              delta_color="off")
     c2.metric("Objętość ponad bazę", f"{s['objetosc']:,.0f} m³".replace(",", " ") if pd.notna(s["objetosc"]) else "– (brak przepływomierza)",
               f"{s['udzial']:.0f}% objętości" if pd.notna(s["udzial"]) else None, delta_color="off")
     c3.metric("Koszt energii", f"{s['koszt']:,.0f} zł".replace(",", " "), f"{s['kwh']:,.0f} kWh ponad bazę".replace(",", " "), delta_color="off")
@@ -86,7 +87,8 @@ def renderuj():
         widok = zd.sort_values("poczatek", ascending=False).rename(columns={
             "dzien": "dzień", "godziny": "godziny", "czas_trwania_h": "godzin", "objetosc_m3": "objętość [m³]",
             "nadwyzka_kwh": "energia [kWh]", "koszt_zl": "koszt [zł]", "opad_mm": "opad [mm]", "ml_typ": "typ wg ML"})
-        st.dataframe(widok[["dzień", "godziny", "godzin", "objętość [m³]", "energia [kWh]", "koszt [zł]", "opad [mm]", "typ", "typ wg ML"]],
+        st.dataframe(widok[["dzień", "godziny", "godzin", "objętość [m³]", "energia [kWh]", "koszt [zł]", "opad [mm]", "typ", "typ wg ML",
+                            "zdarzenie"]],
                      width="stretch", hide_index=True, height=320)
         zs = zd.sort_values("poczatek", ascending=False).reset_index(drop=True)
         etyk = [f"{r.dzien} {r.godziny} · {r.objetosc_m3 if pd.notna(r.objetosc_m3) else r.nadwyzka_kwh} "
