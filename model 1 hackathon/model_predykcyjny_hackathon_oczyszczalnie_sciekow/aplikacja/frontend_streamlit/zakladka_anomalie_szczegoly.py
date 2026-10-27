@@ -22,20 +22,19 @@ def _slupki(seria, tytul, kolor=COL_PRIMARY, os_x=None):
 
 
 def renderuj():
-    st.subheader("Anomalie – szczegóły")
     w = st.session_state.get("an_wynik")
     if w is None:
-        st.info("Najpierw kliknij **Wykryj anomalie** w zakładce 'Anomalie' - tutaj zobaczysz, na podstawie czego powstał wynik.")
+        st.info("Szczegóły są dostępne po uruchomieniu analizy (**Wykryj anomalie**) w podzakładce **Anomalie**.")
         return
     g, zd, meta, wsz = w["g"], w["zd"], w["meta"], w["wszystkie"]
     oid = meta["obiekt"]
-    st.markdown(f"#### Na podstawie czego – pompownia {oid}, {meta['od']:%d.%m.%Y} – {meta['do']:%d.%m.%Y}")
-    st.markdown(f"- **Dane:** {len(g)} dób" + (" z pliku (wcześniejsze tygodnie, przepływ i SCADA z bazy)" if meta["z_pliku"] else " z bazy")
-                + (", **z przepływomierzem**" if meta["przeplyw"] else ", **bez przepływomierza** – zdarzenia i nadwyżki liczone z energii") + ".")
+    st.markdown(f"#### {oid}, {meta['od']:%d.%m.%Y} – {meta['do']:%d.%m.%Y}")
+    st.markdown(f"- **Dane:** {len(g)} dób z pliku"
+                + (", z przepływomierzem" if meta["przeplyw"] else ", bez przepływomierza (liczone z energii)") + ".")
     for t in A.metoda(meta):
         st.markdown(f"- {t}")
 
-    st.markdown("#### Jak głosowały modele")
+    st.markdown("#### Głosowanie modeli")
     a = g[["IF", "LOF", "SVM"]].fillna(0).astype(int)
     glosy = a.sum(axis=1)
     c1, c2, c3, c4 = st.columns(4)
@@ -43,20 +42,20 @@ def renderuj():
     c2.metric("LOF", int(a["LOF"].sum()))
     c3.metric("One-Class SVM", int(a["SVM"].sum()))
     c4.metric("Zgoda ≥ 2 z 3 (wynik)", int((glosy >= 2).sum()))
-    st.caption(f"Doby wskazane przez 1 model: {int((glosy == 1).sum())} · przez 2: {int((glosy == 2).sum())} · przez wszystkie 3: "
-               f"{int((glosy == 3).sum())}. Zespół (≥ 2 z 3) ogranicza fałszywe alarmy pojedynczego modelu.")
+    st.caption(f"1 model: {int((glosy == 1).sum())} · 2: {int((glosy == 2).sum())} · 3: {int((glosy == 3).sum())} dób. "
+               f"Wynik = zgoda ≥ 2 z 3.")
     an = g[g["anomalia"] == True]
     if len(an):
         c1, c2 = st.columns(2)
         with c1:
-            Wykresy.show(_slupki(an["typ"].value_counts(), "Typy nietypowych dób", COL_ANOM), key="as_typy")
+            Wykresy.show(_slupki(an["typ"].value_counts(), "Typy", COL_ANOM), key="as_typy")
         with c2:
             pc = an["glowna_cecha"].map(lambda c: A.NAZWY_CECH.get(c, c)).value_counts()
-            Wykresy.show(_slupki(pc, "Co najbardziej wyróżnia nietypową dobę (główna przyczyna)"), key="as_przyczyny")
+            Wykresy.show(_slupki(pc, "Główna przyczyna"), key="as_przyczyny")
         if "Rodzaj_Anomalii" in an:
-            st.caption("Rodzaj (tryb panelowy, jak w Detektorze GUS): " + ", ".join(f"{k}: {v}" for k, v in an["Rodzaj_Anomalii"].value_counts().items()))
+            st.caption("Rodzaj: " + ", ".join(f"{k}: {v}" for k, v in an["Rodzaj_Anomalii"].value_counts().items()))
 
-    st.markdown("#### Wody przypadkowe a opad")
+    st.markdown("#### Opad a nadwyżka")
     przeplyw = bool(meta["przeplyw"])
     c1, c2 = st.columns(2)
     with c1:
@@ -77,7 +76,7 @@ def renderuj():
             "odsetek": "odsetek", "wskazanych_dni": "wskazanych dób", "zlapane_wszystkie_proc": "złapane dni z alarmem [%]",
             "trafienia_przy_alarmie_proc": "wskazań przy alarmie [%]", "lift": "lift (× częściej niż losowo)"}).round(2),
             width="stretch", hide_index=True)
-        st.caption("Alarmy tłoczni Chorzów (±1 doba) jako „prawda” – lift > 1 znaczy, że detektor wskazuje doby z alarmami częściej niż losowo.")
+        st.caption("Prawda = alarmy tłoczni Chorzów (±1 doba). Lift > 1: lepiej niż losowo.")
     else:
         st.caption("Tabela walidacji na alarmach CH pojawi się po `python main.py anomalie`.")
     try:
@@ -86,9 +85,7 @@ def renderuj():
         if len(zn):
             st.dataframe(zn.rename(columns={"zdarzenie": "znane zdarzenie", "obiekt": "pompownia", "dni": "dni",
                                             "wykryte_dni": "wykryte dni", "typy": "typy"}), width="stretch", hide_index=True)
-            st.caption("Znane zdarzenia: powódź IX 2024 (wszystkie pompownie), przeciążenie RU_W I 2024 (pierwsze dni danych - "
-                       "za mało historii). Informacje organizatorów: awaria jednej z pomp PNB1 5.06.2024 bez wpływu na energię; "
-                       "spadek zużycia PZ1 XI–XII 2024 - naturalny (brak opadów i roztopów).")
+            st.caption("Znane zdarzenia wg organizatorów: powódź IX 2024, przeciążenie RU_W I 2024.")
     except Exception:
         pass
 
@@ -96,5 +93,5 @@ def renderuj():
                            "opad_3d", "temp_sr", "topnienie_cm", "residual_proc", "IF", "LOF", "SVM", "glosy", "anomalia", "typ",
                            "glowna_cecha", "opis"] if c in g]
     out = g[kolumny].assign(dzien=g["dzien"].dt.strftime("%Y-%m-%d")).round(3)
-    Narzedzia.przycisk_pobierania("Dane wejściowe i wynik – dobowo (CSV)", Narzedzia.to_csv_bytes(out), f"anomalie_dobowo_{oid}.csv",
+    Narzedzia.przycisk_pobierania("Dane dobowe (CSV)", Narzedzia.to_csv_bytes(out), f"anomalie_dobowo_{oid}.csv",
                                   "text/csv", key="as_csv")

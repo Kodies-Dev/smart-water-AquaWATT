@@ -1,9 +1,9 @@
 """
-Zarzadzanie zbiorami danych w pamieci sesji - wgrane pliki, ktory jest
-aktywny, i caly stan zwiazany z generowaniem raportu i pytaniami.
+Zarządzanie zbiorami danych w pamięci sesji - wgrane pliki, który jest
+aktywny, i cały stan związany z generowaniem raportu i pytaniami.
 
-Wszystko co dotyczy st.session_state siedzi tutaj, zeby nie grzebac po
-calym kodzie w poszukiwaniu gdzie co jest inicjalizowane.
+Wszystko co dotyczy st.session_state siedzi tutaj, żeby nie grzebać po
+całym kodzie w poszukiwaniu gdzie co jest inicjalizowane.
 """
 
 import streamlit as st
@@ -15,13 +15,13 @@ DOMYSLNY_LIMIT_PUNKTOW = 0
 
 
 class MagazynDanych:
-    """Opakowanie na st.session_state - trzyma wiele wczytanych zbiorow
+    """Opakowanie na st.session_state - trzyma wiele wczytanych zbiorów
     naraz (nazwa -> DataFrame). Jeden z nich jest aktywny i to on idzie
-    do wykresow i detekcji."""
+    do wykresów i detekcji."""
 
     @staticmethod
     def inicjalizuj():
-        """Wywolac raz, na starcie app.py, zanim cokolwiek innego dotknie
+        """Wywołać raz, na starcie app.py, zanim cokolwiek innego dotknie
         session_state."""
         for key in ["result_df", "num_cols", "report", "aktywny",
                     "gen_model"]:  # wynikowe dane, nummery kolumn, txt raportu, wybrane dane do raportu, wybrany model
@@ -41,8 +41,8 @@ class MagazynDanych:
 
     @staticmethod
     def wolna_nazwa(baza: str):
-        """Nie nadpisujemy istniejacego zbioru - dopisujemy numer.
-        sprawdza unikalnosc nazwy zbioru odaje do tych slownikow steamlitowych z session  state"""
+        """Nie nadpisujemy istniejącego zbioru - dopisujemy numer.
+        sprawdza unikalność nazwy zbioru odaje do tych słowników steamlitowych z session  state"""
         if baza not in st.session_state.zbiory:  # jesli nazwa nie istnieje w pamieci to hit
             return baza
         i = 2  # jesli jest to tworzymy wariant z numerem od 2 zaczynajac
@@ -62,7 +62,7 @@ class MagazynDanych:
 
     @staticmethod
     def usun(nazwa: str):
-        """Usuwa zbior z pamieci i przelacza na inny, jesli jakis zostal."""
+        """Usuwa zbiór z pamięci i przełącza na inny, jeśli jakiś został."""
         del st.session_state.zbiory[nazwa]
         st.session_state.aktywny = (list(st.session_state.zbiory)[0]
                                     if st.session_state.zbiory else None)
@@ -75,5 +75,5 @@ class MagazynDanych:
 
     @staticmethod
     def sprzataj_kolumny(df: pd.DataFrame):
-        """Usuwa kolumny bez nazwy - Excel dokleja je przy pustych naglowkach."""
+        """Usuwa kolumny bez nazwy - Excel dokleja je przy pustych nagłówkach."""
         return df.loc[:, ~df.columns.astype(str).str.startswith("Unnamed:")]

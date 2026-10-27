@@ -43,7 +43,7 @@ from frontend_streamlit import zakladka_jak_czytac
 # Anomalie (GUS)) - tylko z POKAZ_ANOMALIE_GUS=1.
 POKAZ_ANOMALIE = os.environ.get("POKAZ_ANOMALIE_GUS") == "1"
 
-st.set_page_config(page_title="prognoza energii - pompownie sciekow", page_icon=None, layout="wide")
+st.set_page_config(page_title="Hydro-analityka", page_icon=None, layout="wide")
 
 Wyglad.zastosuj()  # aplikujemy style
 MagazynDanych.inicjalizuj()
@@ -53,7 +53,7 @@ if not st.session_state.get("baza_proba"):
     st.session_state.baza_proba = True
     try:
         from backend_ml_llm.nasz_detektor import nasz_detektor
-        with st.spinner("Wczytuje dane z bazy..."):
+        with st.spinner("Ładowanie danych referencyjnych..."):
             st.session_state.d_baza, st.session_state.alarmy = nasz_detektor.dane_z_bazy()
     except Exception:
         pass                                         # bez bazy: komunikat ponizej
@@ -63,25 +63,39 @@ panel_prognozy.renderuj()
 
 # ---------------------------------------------------------------- main
 
-st.title("Wody przypadkowe i zuzycie energii pompowni sciekow")
+st.title("Hydro-analityka")
+st.caption("Wykrywanie anomalii i wód przypadkowych oraz prognozowanie zużycia energii w przepompowniach")
 
 if st.session_state.get("d_baza") is None:
-    st.warning("Brak polaczenia z baza danych (historia, pogoda, kalendarz potrzebne do prognozy) - uruchom baze "
-               "(docker compose up -d db) i odswiez strone.")
+    st.warning("Dane referencyjne (pogoda, kalendarz) nie zostały załadowane. Odśwież stronę.")
 if not st.session_state.zbiory:
-    st.info("Wgraj plik w panelu po lewej, zeby zaczac. Mozna wgrac kilka naraz.")
+    st.info("Wgraj plik CSV w panelu bocznym, aby rozpocząć.")
     st.stop()  # zatrzymuje dalsze wykonanie skryptu
 
-# kolejnosc: dane (wczytane w panelu) -> ich wykresy -> prognoza -> szczegoly prognozy -> model -> raport, pytanie, praktyki
-zakladki = [(" Dane", zakladka_dane), (" Wykresy", zakladka_wykresy), (" Wody przypadkowe", zakladka_wody_przypadkowe),
-            (" Anomalie", zakladka_anomalie_klient), (" Anomalie – szczegoly", zakladka_anomalie_szczegoly),
-            (" Prognoza", zakladka_twoja_prognoza),
-            (" Prognoza – szczegoly", zakladka_prognoza_szczegoly), (" Model", zakladka_model),
-            (" Raport", zakladka_raport_prognozy), (" Pytanie", zakladka_pytanie_prognozy),
-            (" Dobre praktyki", zakladka_jak_czytac)]
+
+class _Grupa:
+    """Grupa tematyczna: zakladka glowna z podzakladkami."""
+    def __init__(self, *czesci):
+        self.czesci = list(czesci)
+
+    def renderuj(self):
+        for tab, (_, modul) in zip(st.tabs([n for n, _ in self.czesci]), self.czesci):
+            with tab:
+                modul.renderuj()
+
+
+# kolejnosc pracy: dane -> wody przypadkowe i anomalie -> prognoza energii -> raporty i dokumentacja
+wody_anomalie = _Grupa(("Wody przypadkowe", zakladka_wody_przypadkowe), ("Anomalie", zakladka_anomalie_klient),
+                       ("Szczegóły anomalii", zakladka_anomalie_szczegoly))
 if POKAZ_ANOMALIE:
     from frontend_streamlit import zakladka_detekcja, zakladka_anomalie
-    zakladki[5:5] = [(" Detekcja anomalii (GUS)", zakladka_detekcja), (" Anomalie (GUS)", zakladka_anomalie)]
+    wody_anomalie.czesci += [("Detekcja anomalii (GUS)", zakladka_detekcja), ("Anomalie (GUS)", zakladka_anomalie)]
+zakladki = [("Dane", _Grupa(("Zbiory", zakladka_dane), ("Wykresy", zakladka_wykresy))),
+            ("Wody i anomalie", wody_anomalie),
+            ("Prognoza energii", _Grupa(("Prognoza", zakladka_twoja_prognoza), ("Szczegóły prognozy", zakladka_prognoza_szczegoly),
+                                        ("Model", zakladka_model))),
+            ("Raporty", _Grupa(("Raport", zakladka_raport_prognozy), ("Pytanie", zakladka_pytanie_prognozy))),
+            ("Zalecenia dla użytkownika", zakladka_jak_czytac)]      # ostatnia zakladka - wyrozniona w CSS (styles.py)
 
 for tab, (_, modul) in zip(st.tabs([n for n, _ in zakladki]), zakladki):
     with tab:

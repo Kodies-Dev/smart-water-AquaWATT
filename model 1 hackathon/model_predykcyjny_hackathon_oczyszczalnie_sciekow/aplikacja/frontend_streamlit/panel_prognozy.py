@@ -14,7 +14,7 @@ import streamlit as st
 from frontend_streamlit.magazyn_danych import MagazynDanych
 
 MIASTA = {"Rybnik": "RY", "Ruda Śląska": "RU", "Chorzów": "CH"}
-NOWA = "nowa pompownia (spoza bazy)"
+NOWA = "nowa pompownia"
 
 
 def _jako_prognoza(u, sep, kodowanie, wiersz_naglowka=1):
@@ -45,10 +45,9 @@ def _pompownia(dp):
     obiekty = sorted(d["energia"]["obiekt_id"].unique()) if d is not None else []
     zgadniety = P._obiekt_z_nazwy(dp["pliki"][0])
     opcje = obiekty + [NOWA]
-    wybor = st.sidebar.selectbox("Której pompowni dotyczą dane do prognozy?", opcje, key="pp_obiekt",
+    wybor = st.sidebar.selectbox("Pompownia", opcje, key="pp_obiekt",
                                  index=opcje.index(zgadniety) if zgadniety in opcje else len(opcje) - 1,
-                                 help="Wykrywana z nazwy pliku - zmień, jeśli się nie zgadza. Pompownia z bazy = wcześniejsze "
-                                      "tygodnie dobierzemy z bazy.")
+                                 help="Wykrywana z nazwy pliku - zmień, jeśli się nie zgadza.")
     stacja = None
     if wybor == NOWA:
         oid = st.sidebar.text_input("Nazwa pompowni", value=zgadniety if zgadniety not in obiekty else "NOWA", key="pp_nazwa")
@@ -65,19 +64,19 @@ def _pompownia(dp):
 
 def renderuj():
     """Caly panel boczny. Wywolac raz, przed zakladkami."""
-    st.sidebar.title("Wody przypadkowe i energia")
+    st.sidebar.title("Dane wejściowe")
 
     uploaded = st.sidebar.file_uploader(
         "Wgraj pliki CSV lub Excel", type=["csv", "txt", "xlsx", "xls"], accept_multiple_files=True, key="pp_pliki",
-        help="Pliki z zużyciem energii pompowni (odczyty licznika jak mock_*, raport dystrybutora, czas;kwh) rozpoznajemy "
-             "same - to dane do prognozy. Inne pliki można wgrać do podglądu i porównań w zakładce Dane.",
+        help="Pliki z zużyciem energii (licznik, raport dystrybutora, czas;kwh) są rozpoznawane automatycznie. "
+             "Inne pliki - do podglądu w zakładce Dane.",
     )
 
     if uploaded:
         ma_excel = any(u.name.lower().endswith((".xlsx", ".xls")) for u in uploaded)
         wiersz_naglowka = st.sidebar.number_input(
-            "Wiersz z naglowkami (Excel)", min_value=1, value=1, step=1,
-            help="Numer wiersza z nazwami kolumn. Ustaw wiecej niz 1, jesli arkusz zaczyna sie tytulem.") if ma_excel else 1
+            "Wiersz nagłówka (Excel)", min_value=1, value=1, step=1,
+            help="Więcej niż 1, jeśli arkusz zaczyna się tytułem.") if ma_excel else 1
         ma_csv = any(u.name.lower().endswith((".csv", ".txt")) for u in uploaded)
         if ma_csv:
             sep_wybor = st.sidebar.selectbox("Separator (CSV)", ["automatycznie", ";", ",", "\t", "|"], index=0, key="pp_sep")
@@ -123,25 +122,24 @@ def renderuj():
     if st.session_state.zbiory:
         st.sidebar.divider()
         st.session_state.aktywny = st.sidebar.selectbox(
-            "Zbior aktywny", list(st.session_state.zbiory.keys()),
+            "Zbiór aktywny", list(st.session_state.zbiory.keys()),
             index=list(st.session_state.zbiory.keys()).index(st.session_state.aktywny)
             if st.session_state.aktywny in st.session_state.zbiory else 0,
-            help="Ten zbior trafia do zakladek Dane i Wykresy.")
+            help="Dla zakładek Dane i Wykresy.")
         akt = st.session_state.zbiory[st.session_state.aktywny]
         st.sidebar.caption(f"Wierszy: {len(akt)} | Kolumn: {len(akt.columns)} | "
-                           f"Zbiorow w pamieci: {len(st.session_state.zbiory)}")
+                           f"Zbiorów: {len(st.session_state.zbiory)}")
 
     dp = st.session_state.get("dane_prognozy")
     if dp is not None:
         st.sidebar.divider()
         lok = dp["nowe"]["czas"].dt.tz_convert("Europe/Warsaw")
-        st.sidebar.markdown("**Dane do prognozy**")
+        st.sidebar.markdown("**Dane pompowni**")
         st.sidebar.caption(f"{dp['zrodlo']} · {len(dp['nowe']):,} godzin · {lok.min():%d.%m.%Y} – {lok.max():%d.%m.%Y}".replace(",", " "))
         _pompownia(dp)
 
     if st.session_state.zbiory:
         st.sidebar.divider()
         st.session_state.limit_punktow = st.sidebar.number_input(
-            "Maks. punktow na wykresie", min_value=0, value=st.session_state.limit_punktow, step=1000,
-            help="0 oznacza brak ograniczen - rysowane sa wszystkie punkty. Przy bardzo duzych zbiorach ustawienie "
-                 "limitu przyspiesza rysowanie kosztem szczegolowosci.")
+            "Maks. punktów na wykresie", min_value=0, value=st.session_state.limit_punktow, step=1000,
+            help="0 = bez limitu. Limit przyspiesza rysowanie dużych zbiorów.")

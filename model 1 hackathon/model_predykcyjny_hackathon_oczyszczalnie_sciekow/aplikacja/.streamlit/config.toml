@@ -1,13 +1,13 @@
-# Motyw jasny w stylu Excel/GUS. Wymusza jasne kolory niezaleznie od tego,
+# Motyw jasny, blekitny. Wymusza jasne kolory niezaleznie od tego,
 # czy system uzytkownika ma wlaczony tryb ciemny.
 [theme]
 base = "light"
-primaryColor = "#1F4E79"
+primaryColor = "#2272AE"
 backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F2F2F2"
-textColor = "#1A1A1A"
-linkColor = "#1F4E79"
-borderColor = "#BFBFBF"
+secondaryBackgroundColor = "#EEF5FB"
+textColor = "#1B2A38"
+linkColor = "#1A5C90"
+borderColor = "#C7DDF0"
 showWidgetBorder = true
 baseRadius = "none"
 buttonRadius = "none"

@@ -1,7 +1,7 @@
 """
-Drobne funkcje pomocnicze uzywane w wielu miejscach, ktore nie pasuja
-nigdzie indziej - eksport do CSV, sprawdzanie Ollamy, probkowanie
-wykresow przy duzych zbiorach.
+Drobne funkcje pomocnicze używane w wielu miejscach, które nie pasują
+nigdzie indziej - eksport do CSV, sprawdzanie Ollamy, próbkowanie
+wykresów przy dużych zbiorach.
 """
 
 import io
@@ -14,7 +14,7 @@ import streamlit as st
 
 
 class Narzedzia:
-    """Zbiorka funkcji bez wlasnego stanu - stad staticmethod wszedzie,
+    """Zbiorka funkcji bez własnego stanu - stąd staticmethod wszędzie,
     tak samo jak w anomaly_d.py i mistral_raport_generator.py."""
 
     @staticmethod
@@ -26,7 +26,7 @@ class Narzedzia:
 
     @staticmethod
     def get_ollama_models():
-        """llmowskie guano - tutaj mamy podglad jakie modele sa dostepne lokalnie"""
+        """llmowskie guano - tutaj mamy podgląd jakie modele sa dostępne lokalnie"""
         try:
             # TODO pobawic sie modelami, moze jakis excel - bawic sie tym potem
             r = requests.get(f"{os.environ.get('OLLAMA_URL', 'http://localhost:11434')}/api/tags", timeout=3)
@@ -37,8 +37,8 @@ class Narzedzia:
 
     @staticmethod
     def downsample(df, max_points=None):
-        """Co n-ty wiersz, zeby wykres liniowy pozostal czytelny i szybki.
-        Limit 0 (domyslnie) oznacza brak probkowania - rysowane sa wszystkie punkty."""
+        """Co n-ty wiersz, żeby wykres liniowy pozostal czytelny i szybki.
+        Limit 0 (domyślnie) oznacza brak próbkowania - rysowane sa wszystkie punkty."""
         if max_points is None:
             max_points = st.session_state.get("limit_punktow", 0)
         if not max_points or len(df) <= max_points:
@@ -49,14 +49,14 @@ class Narzedzia:
 
     @staticmethod
     def domyslny_katalog():
-        """Folder, do ktorego domyslnie zapisujemy pliki. Pobrane u wiekszosci
-        ludzi istnieje, wiec zaczynamy od niego."""
+        """Folder, do którego domyślnie zapisujemy pliki. Pobrane u większości
+        ludzi istnieje, więc zaczynamy od niego."""
         pobrane = os.path.join(os.path.expanduser("~"), "Downloads")
         return pobrane if os.path.isdir(pobrane) else os.path.expanduser("~")
 
     @staticmethod
     def zapisz_plik(dane, nazwa, katalog):
-        """Zapisuje bajty na dysk. Zwraca (czy_sie_udalo, komunikat)."""
+        """Zapisuje bajty na dysk. Zwraca (czy_się_udało, komunikat)."""
         try:
             katalog = os.path.expanduser(katalog.strip())
             if not os.path.isdir(katalog):
@@ -66,16 +66,16 @@ class Narzedzia:
                 f.write(dane)
             return True, sciezka
         except PermissionError:
-            return False, "Brak uprawnien do zapisu w tym katalogu."
+            return False, "Brak uprawnień do zapisu w tym katalogu."
         except Exception as e:
             return False, f"{type(e).__name__}: {e}"
 
     @staticmethod
     def _bez_okna_konsoli():
         """
-        Dodatkowe argumenty dla subprocess, zeby na Windowsie nie mignelo czarne
-        okno konsoli przy uruchamianiu PowerShella. Na pozostalych systemach
-        zwraca pusty slownik - tam problem nie wystepuje.
+        Dodatkowe argumenty dla subprocess, żeby na Windowsie nie mignęło czarne
+        okno konsoli przy uruchamianiu PowerShella. Na pozostałych systemach
+        zwraca pusty słownik - tam problem nie występuje.
         """
         if sys.platform != "win32":
             return {}
@@ -89,15 +89,15 @@ class Narzedzia:
     @staticmethod
     def okno_zapisu(nazwa_domyslna):
         """
-        Natywne okno "Zapisz jako" - uzytkownik wskazuje folder I nazwe pliku naraz.
-        Zwraca (pelna_sciezka, komunikat_bledu). Anulowanie daje (None, None).
+        Natywne okno "Zapisz jako" - użytkownik wskazuje folder I nazwę pliku naraz.
+        Zwraca (pełna_ścieżka, komunikat_błędu). Anulowanie daje (None, None).
 
-        Dialog uruchamiany jest jako OSOBNY PROCES, ktory ma wlasny watek glowny.
-        To omija problem, przez ktory okno systemowe wywolane prosto z kodu aplikacji
-        zawiesza sie na macOS - tam okna musza powstawac na watku glownym, a ten jest
-        zajety przez okno aplikacji.
+        Dialog uruchamiany jest jako OSOBNY PROCES, który ma własny watek główny.
+        To omija problem, przez który okno systemowe wywołane prosto z kodu aplikacji
+        zawiesza się na macOS - tam okna muszą powstawać na watku głównym, a ten jest
+        zajęty przez okno aplikacji.
 
-        Korzystamy z narzedzi wbudowanych w system, bez dodatkowych zaleznosci:
+        Korzystamy z narzędzi wbudowanych w system, bez dodatkowych zależności:
         osascript na macOS, PowerShell na Windows, zenity albo kdialog na Linuksie.
         """
         try:
@@ -144,29 +144,29 @@ class Narzedzia:
                     return (sciezka, None) if sciezka else (None, None)
                 except FileNotFoundError:
                     continue
-            return None, "Brak narzedzia do wyboru pliku (zainstaluj zenity albo kdialog)."
+            return None, "Brak narzędzia do wyboru pliku (zainstaluj zenity albo kdialog)."
 
         except subprocess.TimeoutExpired:
-            return None, "Okno zapisu nie zostalo zamkniete w ciagu 5 minut."
+            return None, "Okno zapisu nie zostało zamknięte w ciągu 5 minut."
         except Exception as e:
             return None, f"{type(e).__name__}: {e}"
 
     @staticmethod
     def tryb_desktopowy():
-        """Czy aplikacja dziala w oknie desktopowym (pywebview), a nie w przegladarce.
+        """Czy aplikacja działa w oknie desktopowym (pywebview), a nie w przeglądarce.
         Znacznik ustawia desktop.py przed uruchomieniem serwera."""
         return os.environ.get("DETEKTOR_DESKTOP") == "1"
 
     @staticmethod
     def przycisk_pobierania(etykieta, dane, nazwa_pliku, mime, key):
         """
-        Zapisanie pliku - inaczej w przegladarce, inaczej w oknie desktopowym.
+        Zapisanie pliku - inaczej w przeglądarce, inaczej w oknie desktopowym.
 
-        st.download_button korzysta z mechanizmu pobierania PRZEGLADARKI. W oknie
-        aplikacji (pywebview) osadzona przegladarka tego nie obsluguje i zamiast
-        zapisac plik PRZEKIEROWUJE OKNO pod adres z danymi - aplikacja znika
-        z ekranu, a zostaje surowa tresc pliku. Dlatego w trybie desktopowym ten
-        przycisk jest calkowicie ukryty, a plik zapisuje bezposrednio Python.
+        st.download_button korzysta z mechanizmu pobierania PRZEGLĄDARKI. W oknie
+        aplikacji (pywebview) osadzona przeglądarka tego nie obsługuje i zamiast
+        zapisać plik PRZEKIEROWUJE OKNO pod adres z danymi - aplikacja znika
+        z ekranu, a zostaje surowa treść pliku. Dlatego w trybie desktopowym ten
+        przycisk jest całkowicie ukryty, a plik zapisuje bezpośrednio Python.
         """
         if not Narzedzia.tryb_desktopowy():
             # przegladarka - zwykle pobieranie dziala normalnie

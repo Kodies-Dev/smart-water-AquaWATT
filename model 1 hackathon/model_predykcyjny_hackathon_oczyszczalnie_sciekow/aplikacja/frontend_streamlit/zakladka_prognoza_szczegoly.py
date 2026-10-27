@@ -50,23 +50,23 @@ def dane_wejsciowe(wynik, wej):
 
 def fig_zuzycie_pogoda(t, dobowo=True):
     fig = make_subplots(rows=3, cols=1, shared_xaxes=True, row_heights=[0.55, 0.25, 0.2], vertical_spacing=0.05,
-                        subplot_titles=("Zużycie energii", "Deszcz", "Temperatura"))
+                        subplot_titles=("Zużycie", "Opad", "Temperatura"))
     if dobowo:
         g = t.groupby(t["czas_lokalny"].dt.date)
         x = list(g.groups)
         rz = g["rzeczywiste_kwh"].sum(min_count=20)
         pr, op, pop, tm = g["prognoza_kwh"].sum(), g["opad_mm"].sum(min_count=1), g["prognoza_opadu_mm"].sum(min_count=1), g["temperatura_c"].mean()
-        jedn = "kWh / doba"
+        jedn = "kWh/doba"
     else:
         x, rz, pr = t["czas_lokalny"], t["rzeczywiste_kwh"], t["prognoza_kwh"]
-        op, pop, tm, jedn = t["opad_mm"], t["prognoza_opadu_mm"], t["temperatura_c"], "kWh / h"
-    fig.add_trace(go.Scatter(x=x, y=rz, name="zużycie rzeczywiste", mode="lines", line=dict(color="#1A1A1A", width=1.6)), 1, 1)
-    fig.add_trace(go.Scatter(x=x, y=pr, name="prognoza (z dnia wcześniej)", mode="lines", line=dict(color=COL_ANOM, width=1.3)), 1, 1)
-    fig.add_trace(go.Bar(x=x, y=op, name="deszcz zmierzony [mm]", marker_color=COL_PRIMARY, opacity=0.8), 2, 1)
-    fig.add_trace(go.Scatter(x=x, y=pop, name="prognoza deszczu sprzed doby [mm]", mode="markers",
+        op, pop, tm, jedn = t["opad_mm"], t["prognoza_opadu_mm"], t["temperatura_c"], "kWh/h"
+    fig.add_trace(go.Scatter(x=x, y=rz, name="rzeczywiste", mode="lines", line=dict(color="#1A1A1A", width=1.6)), 1, 1)
+    fig.add_trace(go.Scatter(x=x, y=pr, name="prognoza D-1", mode="lines", line=dict(color=COL_ANOM, width=1.3)), 1, 1)
+    fig.add_trace(go.Bar(x=x, y=op, name="opad", marker_color=COL_PRIMARY, opacity=0.8), 2, 1)
+    fig.add_trace(go.Scatter(x=x, y=pop, name="prognoza opadu D-1", mode="markers",
                              marker=dict(color=COL_ACCENT, size=5, symbol="diamond")), 2, 1)
-    fig.add_trace(go.Scatter(x=x, y=tm, name="temperatura [°C]", mode="lines", line=dict(color="#EF9F27", width=1.3)), 3, 1)
-    fig = Wykresy.style_fig(fig, "Zużycie energii na tle pogody (deszcz zwiększa ilość ścieków i pracę pomp)", None, None, height=620)
+    fig.add_trace(go.Scatter(x=x, y=tm, name="temperatura", mode="lines", line=dict(color="#EF9F27", width=1.3)), 3, 1)
+    fig = Wykresy.style_fig(fig, "Zużycie na tle pogody", None, None, height=620)
     fig.update_yaxes(title_text=jedn, row=1, col=1)
     fig.update_yaxes(title_text="mm", row=2, col=1)
     fig.update_yaxes(title_text="°C", row=3, col=1)
@@ -76,23 +76,22 @@ def fig_zuzycie_pogoda(t, dobowo=True):
 def fig_jutro_pogoda(t):
     j = t[t["jutro"]]
     fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(go.Bar(x=j["czas_lokalny"].dt.strftime("%H:%M"), y=j["prognoza_kwh"], name="prognoza zużycia [kWh]",
+    fig.add_trace(go.Bar(x=j["czas_lokalny"].dt.strftime("%H:%M"), y=j["prognoza_kwh"], name="zużycie",
                          marker_color=COL_PRIMARY), secondary_y=False)
-    fig.add_trace(go.Scatter(x=j["czas_lokalny"].dt.strftime("%H:%M"), y=j["prognoza_opadu_mm"], name="prognoza deszczu [mm]",
+    fig.add_trace(go.Scatter(x=j["czas_lokalny"].dt.strftime("%H:%M"), y=j["prognoza_opadu_mm"], name="opad",
                              mode="lines+markers", line=dict(color=COL_ACCENT, width=2)), secondary_y=True)
-    fig.add_trace(go.Scatter(x=j["czas_lokalny"].dt.strftime("%H:%M"), y=j["temperatura_c"], name="temperatura [°C]",
+    fig.add_trace(go.Scatter(x=j["czas_lokalny"].dt.strftime("%H:%M"), y=j["temperatura_c"], name="temperatura",
                              mode="lines", line=dict(color="#EF9F27", width=1.4, dash="dot")), secondary_y=True)
-    fig = Wykresy.style_fig(fig, f"Kolejne 24 h: prognoza zużycia i pogody ({j['czas_lokalny'].min():%d.%m.%Y})", "godzina",
-                            "kWh w godzinie", height=420)
+    fig = Wykresy.style_fig(fig, f"Jutro ({j['czas_lokalny'].min():%d.%m.%Y}): zużycie i pogoda", "godzina",
+                            "kWh/h", height=420)
     fig.update_yaxes(title_text="mm / °C", secondary_y=True, showgrid=False)
     return fig
 
 
 def renderuj():
-    st.subheader("Prognoza – szczegóły")
     prog, wej = st.session_state.get("prog_wynik"), st.session_state.get("prog_dd")
     if prog is None or wej is None:
-        st.info("Najpierw przygotuj prognozę w zakładce 'Prognoza' - tutaj zobaczysz, na podstawie czego powstała.")
+        st.info("Szczegóły są dostępne po przygotowaniu prognozy w podzakładce **Prognoza**.")
         return
     oid, wynik, met, mies, jutro = prog
     t = dane_wejsciowe(wynik, wej)
@@ -102,37 +101,33 @@ def renderuj():
     dni_wolne = sorted(set(t.loc[t["dzien_wolny"], "czas_lokalny"].dt.date))
     swieta = sorted({(d_, s) for d_, s in zip(t["czas_lokalny"].dt.date, t["swieto"]) if isinstance(s, str) and s})
 
-    st.markdown("#### Na podstawie czego powstała prognoza")
+    st.markdown("#### Dane wejściowe")
     st.markdown(f"""
-- **Historia zużycia energii:** {tys(hist)} godzin ({t['czas_lokalny'].min():%d.%m.%Y} – {t.loc[t['rzeczywiste_kwh'].notna(), 'czas_lokalny'].max():%d.%m.%Y})
-  {f"– w tym {tys(wej['z_pliku'])} godzin z pliku, reszta dobrana z bazy" if wej['z_pliku'] else "– z bazy danych"}.
-  Model patrzy m.in. na zużycie dobę i tydzień wcześniej, średnie z doby i tygodnia oraz typowy profil z 4 tygodni.
-- **Pogoda:** punkt {MIASTA.get(stacja, stacja)} – opad, temperatura, śnieg i wilgotność gleby z ostatnich dni
-  (Open-Meteo, dane historyczne ERA5; ostatnie dni i jutro z bieżącej prognozy).
-- **Prognoza pogody wydana dzień wcześniej** – deszcz i temperatura na godzinę, dla której liczymy prognozę
-  (tak, jak byłoby naprawdę: nie znamy przyszłej pogody, tylko jej prognozę).
-- **Kalendarz:** {len(dni_wolne)} dni wolnych w okresie{(" – w tym święta: " + ", ".join(f"{s} ({d_:%d.%m})" for d_, s in swieta[:6])) if swieta else ""}.
-- **Model:** {nazwa(meta['wariant'])}, {meta['drzew']} drzew{" – uczony **bez okresu z pliku** (uczciwe sprawdzenie)" if wej['uczciwie'] else ""}.
+- **Historia zużycia:** {tys(hist)} h ({t['czas_lokalny'].min():%d.%m.%Y} – {t.loc[t['rzeczywiste_kwh'].notna(), 'czas_lokalny'].max():%d.%m.%Y})
+  {f"– w tym {tys(wej['z_pliku'])} godzin z pliku" if wej['z_pliku'] else ""}.
+- **Pogoda:** {MIASTA.get(stacja, stacja)}, Open-Meteo (ERA5 + bieżąca prognoza).
+- **Prognoza pogody D-1:** opad i temperatura wydane dzień wcześniej.
+- **Kalendarz:** {len(dni_wolne)} dni wolnych{(" – święta: " + ", ".join(f"{s} ({d_:%d.%m})" for d_, s in swieta[:6])) if swieta else ""}.
+- **Model:** {nazwa(meta['wariant'])}, {meta['drzew']} drzew{" – bez okresu z pliku (uczciwy backtest)" if wej['uczciwie'] else ""}.
 """)
 
     dobowo = st.radio("Widok", ["dobowo", "godzinowo"], horizontal=True, key="ps_widok") == "dobowo"
     Wykresy.show(fig_zuzycie_pogoda(t, dobowo), key="ps_pogoda")
-    st.caption("Zielone romby to prognoza deszczu wydana dzień wcześniej – z niej korzysta model. Niebieskie słupki to deszcz, "
-               "który naprawdę spadł. Gdy prognoza deszczu się myli, myli się też prognoza zużycia.")
+    st.caption("Romby: prognoza opadu D-1 (używa jej model). Słupki: opad zmierzony.")
     Wykresy.show(fig_jutro_pogoda(t), key="ps_jutro")
 
     if met:
-        st.markdown("#### Porównanie z prostymi metodami (te same doby)")
-        opisy = {"model": "nasza prognoza", "naiwny_doba": "„jutro jak dziś” (wczoraj o tej godzinie)",
-                 "naiwny_tydzien": "„jak tydzień temu”", "profil_4tyg": "typowy dzień z 4 tygodni (mediana)"}
+        st.markdown("#### Model vs proste metody")
+        opisy = {"model": "model", "naiwny_doba": "jak wczoraj", "naiwny_tydzien": "jak tydzień temu",
+                 "profil_4tyg": "mediana 4 tygodni"}
         p = met.get("porownanie_WAPE_doba", {})
-        st.dataframe(pd.DataFrame([dict(metoda=opisy.get(k, k), średni_błąd_dobowy_proc=v,
-                                        nasza_lepsza_o_proc=None if k == "model" else round(100 * (1 - p["model"] / v)))
+        st.dataframe(pd.DataFrame([{"metoda": opisy.get(k, k), "WAPE dobowe [%]": v,
+                                     "poprawa modelu [%]": None if k == "model" else round(100 * (1 - p["model"] / v))}
                                    for k, v in p.items()]), width="stretch", hide_index=True)
     _, _, _, waz = wczytaj_wyniki()
     if waz is not None:
         Wykresy.show(Wykresy.fig_waznosc(waz), key="ps_waznosc")
-        st.caption("Ważność cech modelu głównego (z treningu): najwięcej mówi historia zużycia, potem kalendarz i prognoza pogody.")
+        st.caption("Z treningu: najwięcej wnosi historia zużycia, potem kalendarz i prognoza pogody.")
     if mies is not None and len(mies):
         with st.expander("Sumy miesięczne"):
             st.dataframe(mies.rename(columns={"kwh": "rzeczywiste [kWh]", "prognoza": "prognoza [kWh]",
@@ -140,5 +135,5 @@ def renderuj():
     out = t.assign(czas=t["czas_lokalny"].dt.strftime("%Y-%m-%d %H:%M")).drop(columns=["czas_lokalny"])
     out = out[["czas", "rzeczywiste_kwh", "prognoza_kwh", "opad_mm", "prognoza_opadu_mm", "temperatura_c", "dzien_wolny",
                "swieto", "jutro"]].round(3)
-    Narzedzia.przycisk_pobierania("Dane użyte do prognozy – godzinowo (CSV)", Narzedzia.to_csv_bytes(out),
+    Narzedzia.przycisk_pobierania("Dane wejściowe (CSV)", Narzedzia.to_csv_bytes(out),
                                   f"dane_wejsciowe_{oid}.csv", "text/csv", key="ps_csv")

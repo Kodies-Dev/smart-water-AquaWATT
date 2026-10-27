@@ -15,17 +15,17 @@ def _horyzont():
     if not p.exists() and not q.exists():
         st.caption("Ocena horyzontu: `python main.py horyzont` (1–7 dni) i `python main.py horyzont --dlugi` (plan 2 miesiące).")
         return
-    st.markdown("#### Jak dokładna jest prognoza dalej w przyszłość")
+    st.markdown("#### Błąd a horyzont")
     if p.exists():
         t = pd.read_csv(p)
         r = t[t["obiekt"] == "RAZEM"][["dni", "model", "jak_k_dni_temu", "profil_4tyg"]].rename(
-            columns={"dni": "dni naprzód", "model": "nasz model [%]", "jak_k_dni_temu": "„jak K dni temu” [%]",
+            columns={"dni": "dni naprzód", "model": "model [%]", "jak_k_dni_temu": "„jak K dni temu” [%]",
                      "profil_4tyg": "typowy dzień [%]"})
         if (WYNIKI / "horyzont.png").exists():
             st.image(str(WYNIKI / "horyzont.png"))
         st.dataframe(r.round(1), width="stretch", hide_index=True)
     if q.exists():
-        st.markdown("**Plan na 2 miesiące** (średni błąd dobowy P50 i pokrycie przedziału P10–P90 na startach testowych)")
+        st.markdown("**Plan 2 miesiące** – błąd P50 i pokrycie P10–P90")
         st.dataframe(pd.read_csv(q).rename(columns={"dni": "dni naprzód", "plan": "plan (wybrana metoda) [%]", "model_p50": "plan [%]",
                                                     "model_ml": "model ML [%]", "kalendarz": "poziom × kalendarz [%]",
                                                     "jak_ostatnie_4tyg": "„średnia z 4 tygodni” [%]", "rok_temu": "„rok temu” [%]",
@@ -35,8 +35,8 @@ def _horyzont():
         pp = WYNIKI / "dlugi_podsumowanie.json"
         if pp.exists():
             p = json.loads(pp.read_text(encoding="utf-8"))
-            st.caption(f"Wybrana metoda planu: {p.get('opis_metody', '–')} (wybór na okresach kroczących w części treningowej). "
-                       f"Suma 30 dni: błąd {p.get('blad_sumy_30d', float('nan')):.1f}% vs „średnia z 4 tygodni” "
+            st.caption(f"Metoda: {p.get('opis_metody', '–')}. "
+                       f"Suma 30 dni: błąd {p.get('blad_sumy_30d', float('nan')):.1f}% vs „średnia 4 tyg.” "
                        f"{p.get('blad_sumy_30d_jak_ostatnie_4tyg', float('nan')):.1f}%; w przedziale {p.get('pokrycie_sumy_30d', float('nan')):.0f}% sum.")
 
 
@@ -56,24 +56,12 @@ def renderuj():
 - **Wytrenowany:** {meta['wytrenowano'][:16].replace('T', ' ')}
 """)
         except FileNotFoundError:
-            st.warning("Brak zapisanego modelu.")
-        d = st.session_state.get("d_baza")
-        st.caption((f"Baza: {d['energia']['obiekt_id'].nunique()} pompowni, " + f"{len(d['energia']):,} godzin zużycia. ".replace(",", " "))
-                   if d is not None else "Brak połączenia z bazą – uruchom `docker compose up -d db`.")
-        if st.button("Odśwież dane z bazy", key="model_odswiez"):
-            try:
-                from backend_ml_llm.nasz_detektor import nasz_detektor
-                with st.spinner("Wczytuję..."):
-                    st.session_state.d_baza, st.session_state.alarmy = nasz_detektor.dane_z_bazy()
-                st.session_state.zbiory["baza_dobowo"] = nasz_detektor.dobowo_do_podgladu(st.session_state.d_baza)
-                st.rerun()
-            except Exception as e:
-                st.error(f"Nie udało się: {e}")
-        st.caption("Trening na wszystkich danych z bazy trwa 1-2 min. Potrzebny po ponownym ETL albo gdy modelu nie ma.")
+            st.warning("Brak zapisanego modelu. Wytrenuj go przyciskami poniżej.")
+        st.caption("Trening na pełnej historii trwa 1–2 min. Wymagany, gdy brakuje zapisanego modelu.")
         if st.button("Wytrenuj modele 1–7 dni i plan 2 miesiące (kilka minut)", key="model_trenuj_dni"):
             d = st.session_state.get("d_baza")
             if d is None:
-                st.error("Brak danych z bazy.")
+                st.error("Dane referencyjne nie zostały załadowane. Odśwież stronę.")
             else:
                 import model.dlugi as D
                 pasek = st.progress(0.0, text="Trening...")
@@ -84,10 +72,10 @@ def renderuj():
                 D.trenuj(d)
                 pasek.progress(1.0, text="Gotowe")
                 st.success(f"Modele 1–7 dni i plan na 2 miesiące zapisane (dostępne dni: {P.dostepne_dni()}).")
-        if st.button("Wytrenuj model na wszystkich danych z bazy", key="model_trenuj"):
+        if st.button("Wytrenuj model na jutro", key="model_trenuj"):
             d = st.session_state.get("d_baza")
             if d is None:
-                st.error("Brak danych z bazy.")
+                st.error("Dane referencyjne nie zostały załadowane. Odśwież stronę.")
             else:
                 with st.spinner("Trening..."):
                     P.trenuj(d)

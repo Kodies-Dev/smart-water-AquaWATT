@@ -48,39 +48,37 @@ def pokaz_podsumowanie(prog, opis, d, klucz="tp"):
     st.markdown(f"### Wynik dla pompowni {oid}")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric(f"Prognoza na {s['jutro_od']:%d.%m.%Y}", f"{s['jutro_kwh']:,.0f} kWh".replace(",", " "),
-              help="Suma prognozowanego zuzycia energii w kolejnych 24 godzinach.")
-    c2.metric("Najwięcej energii", f"godz. {s['szczyt_godz']}", pl(f"{s['szczyt_kwh']:.1f} kWh w tej godzinie"), delta_color="off")
+              help="Suma na kolejne 24 h.")
+    c2.metric("Szczyt", f"godz. {s['szczyt_godz']}", pl(f"{s['szczyt_kwh']:.1f} kWh w tej godzinie"), delta_color="off")
     if "wape" in s:
-        c3.metric("Średni błąd prognozy", pl(f"{s['wape']:.1f}%"), f"≈ {s['blad_kwh']:.0f} kWh na dobę", delta_color="off",
-                  help="O ile średnio myliliśmy się w całym dniu, gdy prognozę robiliśmy dzień wcześniej (dane z pliku).")
+        c3.metric("Błąd (WAPE)", pl(f"{s['wape']:.1f}%"), f"≈ {s['blad_kwh']:.0f} kWh na dobę", delta_color="off",
+                  help="Średni błąd dobowy prognozy D-1 na danych z pliku.")
         if "wczoraj" in s:
-            c4.metric("Dokładniej niż „jak wczoraj”", f"{s['lepiej_niz_wczoraj']:+.0f}%",
-                      pl(f"metoda „jak wczoraj”: {s['wczoraj']:.1f}% błędu"), delta_color="off",
-                      help="Porównanie z najprostszą metodą: jutro zużycie będzie takie jak dziś.")
+            c4.metric("Poprawa vs „jak wczoraj”", f"{s['lepiej_niz_wczoraj']:+.0f}%",
+                      pl(f"„jak wczoraj”: {s['wczoraj']:.1f}%"), delta_color="off",
+                      help="Metoda naiwna: jutro = dziś.")
     else:
-        c3.metric("Najmniej energii", f"godz. {s['dolek_godz']}", pl(f"{s['dolek_kwh']:.1f} kWh"), delta_color="off")
+        c3.metric("Minimum", f"godz. {s['dolek_godz']}", pl(f"{s['dolek_kwh']:.1f} kWh"), delta_color="off")
     st.markdown(s["tekst"])
 
     Wykresy.show(Wykresy.fig_jutro_slupki(jutro), key=f"{klucz}_wykres_jutro")
     if len(dz):
         Wykresy.show(Wykresy.fig_trafnosc_dobowa(dz), key=f"{klucz}_wykres_trafnosc")
         with st.expander(f"Dzień po dniu ({len(dz)} dób)"):
-            t = dz.rename(columns={"data": "dzień", "rzeczywiste_kwh": "zużycie rzeczywiste [kWh]",
+            t = dz.rename(columns={"data": "dzień", "rzeczywiste_kwh": "rzeczywiste [kWh]",
                                    "prognoza_kwh": "prognoza [kWh]", "roznica_kwh": "różnica [kWh]",
                                    "roznica_proc": "różnica [%]"})
             st.dataframe(t.round(1), width="stretch", hide_index=True)
         if mies is not None and len(mies) > 1:
             with st.expander("Miesiąc po miesiącu"):
-                st.dataframe(mies.rename(columns={"kwh": "zużycie rzeczywiste [kWh]", "prognoza": "prognoza [kWh]",
+                st.dataframe(mies.rename(columns={"kwh": "rzeczywiste [kWh]", "prognoza": "prognoza [kWh]",
                                                   "roznica_proc": "różnica [%]"}).round(1), width="stretch")
 
-    st.markdown("#### Pobierz wyniki")
+    st.markdown("#### Eksport")
     c1, c2, c3 = st.columns(3)
     with c1:
-        Narzedzia.przycisk_pobierania("Raport w Excelu (z wykresami)", excel_z_sesji(oid, s, dz), f"raport_{oid}.xlsx",
+        Narzedzia.przycisk_pobierania("Raport Excel", excel_z_sesji(oid, s, dz), f"raport_{oid}.xlsx",
                                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"{klucz}_xlsx")
-    st.caption("Raport w Excelu: podsumowanie, jutro godzina po godzinie, dzień po dniu, miesiące i pogoda – z wykresami; "
-               "do tego tydzień, plan na 2 miesiące i raport AI, jeśli zostały policzone w tej sesji.")
     with c2:
         j = pd.DataFrame({"godzina": jutro["czas_lokalny"].dt.strftime("%Y-%m-%d %H:%M"), "prognoza_kwh": jutro["prognoza"].round(2)})
         Narzedzia.przycisk_pobierania("Prognoza na 24 h (CSV)", Narzedzia.to_csv_bytes(j), f"prognoza_24h_{oid}.csv",
@@ -100,13 +98,13 @@ def _podsumowanie_danych(nowe, dp):
     doby = doby[doby["count"] >= 23]["sum"]
     braki = int(pd.date_range(h.index.min(), h.index.max(), freq="h").difference(h.index).size)
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Okres danych", f"{lok.min():%d.%m} – {lok.max():%d.%m.%Y}")
+    c1.metric("Okres", f"{lok.min():%d.%m} – {lok.max():%d.%m.%Y}")
     c2.metric("Pełnych dób", f"{len(doby)}")
-    c3.metric("Zużycie razem", f"{h.sum():,.0f} kWh".replace(",", " "))
+    c3.metric("Suma", f"{h.sum():,.0f} kWh".replace(",", " "))
     c4.metric("Średnio na dobę", f"{doby.mean():,.0f} kWh".replace(",", " ") if len(doby) else "–")
     if len(doby):
-        st.caption(f"Format: {dp['rodzaj']} · zużycie dobowe od {doby.min():.0f} do {doby.max():.0f} kWh · "
-                   + ("dane kompletne" if braki == 0 else f"brakujących godzin: {braki} (model sobie z tym poradzi)"))
+        st.caption(f"Format: {dp['rodzaj']} · doby {doby.min():.0f}–{doby.max():.0f} kWh · "
+                   + ("bez braków" if braki == 0 else f"braki: {braki} h"))
 
 
 def _blad_ogolny(k):
@@ -134,12 +132,10 @@ def _tydzien(tydzien, bledy):
         b_plik, b_test = bledy.get(k), _blad_ogolny(k)
         wiersze.append({"dzień naprzód": f"+{k}", "od": f"{r['od']:%d.%m %H:%M}", "do": f"{r['do']:%d.%m %H:%M}",
                         "prognoza [kWh]": round(r["kwh"], 1), "szczyt [kWh/h]": round(r["szczyt"], 1),
-                        "błąd na pliku [%]": b_plik, "typowy błąd z testu [%]": None if b_test is None else round(b_test, 1)})
+                        "błąd – plik [%]": b_plik, "błąd – test [%]": None if b_test is None else round(b_test, 1)})
     st.dataframe(pd.DataFrame(wiersze), width="stretch", hide_index=True)
-    st.caption("Każdy dzień liczony osobnym modelem na tyle dni naprzód, z prognozą pogody wydaną z takim wyprzedzeniem. "
-               "Im dalej, tym mniej pewna prognoza deszczu, więc i zużycia. „Błąd na pliku” - sprawdzenie na dniach z pliku "
-               "(dla dni +2…+7 modelem zapisanym, który mógł widzieć ten okres); „typowy błąd z testu” - uczciwa ocena "
-               "(python main.py horyzont).")
+    st.caption("Dzień +K: osobny model, prognoza pogody wydana K dni wcześniej. Błąd – plik: na dniach z pliku; "
+               "błąd – test: uczciwa ocena na teście.")
     out = tydzien.assign(czas=tydzien["czas_lokalny"].dt.strftime("%Y-%m-%d %H:%M"))[["czas", "dzien_naprzod", "prognoza"]].round(3)
     Narzedzia.przycisk_pobierania(f"Prognoza na {k_max} dni (CSV)", Narzedzia.to_csv_bytes(out), "prognoza_tydzien.csv",
                                   "text/csv", key="tp_tydzien_csv")
@@ -147,15 +143,14 @@ def _tydzien(tydzien, bledy):
 
 def _plan(P, d, oid, nowe, stacja):
     import model.dlugi as D
-    st.caption("Plan dobowy na 2 miesiące: kalendarz, pora roku, ostatni poziom pompowni i **typowa pogoda dla tej pory roku** "
-               "(pogody na tygodnie naprzód nikt nie zna). Do budżetu i zakupu energii, nie do pojedynczych godzin.")
+    st.caption("Plan dobowy: kalendarz, sezon, poziom pompowni i typowa pogoda. Do budżetu i zakupu energii.")
     try:
         D.wczytaj_model()
     except FileNotFoundError:
-        st.warning("Brak modelu planu - wytrenuj go w zakładce **Model** albo `python main.py prognoza --trenuj --dni 7`.")
+        st.warning("Brak modelu planu. Wytrenuj go w zakładce **Model**.")
         return
     if st.button("Przygotuj plan na 2 miesiące", type="primary", key="tp_plan"):
-        with st.spinner("Liczę plan..."):
+        with st.spinner("Obliczanie planu..."):
             try:
                 st.session_state.prog_plan = (oid,) + D.prognoza(d, oid, nowe, stacja)
             except ValueError as e:
@@ -178,13 +173,14 @@ def _plan(P, d, oid, nowe, stacja):
         q = pd.read_csv(WYNIKI / "dlugi.csv").set_index("dni")
         kol = "plan" if "plan" in q else "model_p50"
         r1, r4 = q.iloc[0], q.iloc[-1]
-        jak = (f" W teście średni błąd dobowy wyniósł {r1[kol]:.1f}% dla pierwszego tygodnia i {r4[kol]:.1f}% dla dni 31–60 "
-               f"(„średnia z ostatnich 4 tygodni”: {r1['jak_ostatnie_4tyg']:.1f}% / {r4['jak_ostatnie_4tyg']:.1f}%); przedział objął "
-               f"prawdziwą wartość w {r1['pokrycie_p10_p90']:.0f}% dni pierwszego tygodnia i {r4['pokrycie_p10_p90']:.0f}% dni 31–60.")
-    jak += f" Metoda planu (wybrana na danych historycznych): {meta_planu.get('opis_metody', 'model ML')}."
+        jak = (f"Test: błąd dobowy {r1[kol]:.1f}% (tydzień 1) / {r4[kol]:.1f}% (dni 31–60), „średnia 4 tyg.” "
+               f"{r1['jak_ostatnie_4tyg']:.1f}% / {r4['jak_ostatnie_4tyg']:.1f}%; pokrycie przedziału "
+               f"{r1['pokrycie_p10_p90']:.0f}% / {r4['pokrycie_p10_p90']:.0f}%.")
+    jak += f" Metoda: {meta_planu.get('opis_metody', 'model ML')}."
     s4 = tyg[tyg["tydzien"] <= 4]
-    st.markdown(f"Najbardziej prawdopodobne zużycie w najbliższych 4 tygodniach to **{t4['p50'].sum():,.0f} kWh** "
-                f"(tygodniowo zwykle {s4['p10'].mean():,.0f}–{s4['p90'].mean():,.0f} kWh).".replace(",", " ") + jak)
+    st.markdown(f"Najbliższe 4 tygodnie: **{t4['p50'].sum():,.0f} kWh** "
+                f"(tygodniowo zwykle {s4['p10'].mean():,.0f}–{s4['p90'].mean():,.0f} kWh).".replace(",", " "))
+    st.caption(jak.strip())
     Wykresy.show(Wykresy.fig_plan(dz), key="tp_plan_wykres")
     c1, c2 = st.columns(2)
     with c1:
@@ -196,36 +192,33 @@ def _plan(P, d, oid, nowe, stacja):
         st.markdown("#### Miesiąc po miesiącu")
         st.dataframe(mies.rename(columns={"miesiac": "miesiąc", "p50": "prognoza [kWh]", "p10": "od [kWh]", "p90": "do [kWh]"}).round(0),
                      width="stretch", hide_index=True)
-    st.caption("Zakresy tygodni i miesięcy pochodzą z rzeczywistych błędów sum tej pompowni w przeszłości (ok. 80% sum "
-               "mieści się w zakresie) - dni deszczowe i suche częściowo się znoszą, więc zakres sumy jest węższy niż suma dziennych granic.")
+    st.caption("Zakresy z historycznych błędów sum tej pompowni (ok. 80% sum w zakresie).")
     out = dz.assign(dzien=dz["dzien"].dt.strftime("%Y-%m-%d")).round(1)
     c1, c2 = st.columns(2)
     with c1:
-        Narzedzia.przycisk_pobierania("Plan w Excelu (z wykresami)", excel_z_sesji(oid), f"plan_2_miesiace_{oid}.xlsx",
+        Narzedzia.przycisk_pobierania("Plan – Excel", excel_z_sesji(oid), f"plan_2_miesiace_{oid}.xlsx",
                                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="tp_plan_xlsx")
     with c2:
-        Narzedzia.przycisk_pobierania("Plan dzień po dniu (CSV)", Narzedzia.to_csv_bytes(out), f"plan_2_miesiace_{oid}.csv",
+        Narzedzia.przycisk_pobierania("Plan – CSV", Narzedzia.to_csv_bytes(out), f"plan_2_miesiace_{oid}.csv",
                                       "text/csv", key="tp_plan_csv")
 
 
 def renderuj():
-    st.subheader("Prognoza zużycia energii pompowni")
+    st.subheader("Prognoza zużycia energii")
     import model.prognoza as P
 
     d = st.session_state.get("d_baza")
     if d is None:
-        st.warning("Brak połączenia z bazą danych - uruchom bazę (`docker compose up -d db`) i odśwież stronę.")
+        st.warning("Dane referencyjne (pogoda, kalendarz) nie zostały załadowane. Odśwież stronę.")
         return
     dp = st.session_state.get("dane_prognozy")
     if dp is None:
-        st.info("👈 Wgraj plik(i) z zużyciem energii w panelu po lewej i kliknij **Wczytaj pliki**. Dane obejrzysz w zakładce **Dane**, "
-                "a tutaj jednym przyciskiem przygotujesz **prognozę na kolejną dobę** i sprawdzisz, **jak dokładne byłyby "
-                "nasze prognozy** w okresie z pliku.")
+        st.info("Wgraj plik CSV z zużyciem energii w panelu bocznym i kliknij **Wczytaj pliki**.")
         return
     try:
         _, meta = P.wczytaj_model()
     except FileNotFoundError:
-        st.info("Model nie jest jeszcze przygotowany - przygotuję go raz na wszystkich danych (1-2 min).")
+        st.info("Brak wytrenowanego modelu. Przygotowanie modelu jednorazowo zajmuje 1–2 min.")
         if st.button("Przygotuj model", type="primary", key="tp_trenuj"):
             with st.spinner("Uczę model na wszystkich danych..."):
                 P.trenuj(d)
@@ -233,21 +226,18 @@ def renderuj():
         return
 
     oid, nowe, stacja = dp["oid"], dp["nowe"], dp["stacja"]
-    st.markdown(f"Dane: **{dp['zrodlo']}** · pompownia **{oid}**" + (" (nowa, spoza bazy)" if stacja else "")
-                + " · zmienisz je w panelu po lewej.")
+    st.markdown(f"**{dp['zrodlo']}** · pompownia **{oid}**" + (" (nowa)" if stacja else ""))
     _podsumowanie_danych(nowe, dp)
     opis = dict(zrodlo=dp["zrodlo"], stacja=stacja)
     if opis["stacja"] is None:
         ob = d["obiekty"].set_index("obiekt_id")
         opis["stacja"] = ob.loc[oid, "stacja_pogody"] if oid in ob.index else "RY"
 
-    horyzont = st.radio("Na ile do przodu", ["Jutro (24 h)", "Tydzień (7 dni)", "2 miesiące (plan)"], horizontal=True,
-                        key="tp_horyzont", help="Jutro: najdokładniejsza, z prognozą pogody. Tydzień: każdy dzień osobnym modelem, "
-                                                "z prognozą pogody wydaną tyle dni wcześniej. 2 miesiące: plan dobowy z przedziałem, "
-                                                "bez prognozy pogody (typowa pogoda dla pory roku) - do budżetu i zakupu energii.")
+    horyzont = st.radio("Horyzont", ["Jutro (24 h)", "Tydzień (7 dni)", "2 miesiące (plan)"], horizontal=True,
+                        key="tp_horyzont", help="Jutro: z prognozą pogody. Tydzień: osobny model na każdy dzień. "
+                                                "2 miesiące: plan dobowy z przedziałem (typowa pogoda).")
     if horyzont.startswith("Tydzień") and P.dostepne_dni() < 2:
-        st.warning("Brak modeli na kilka dni naprzód - wytrenuj je w zakładce **Model** (przycisk „Wytrenuj modele 1–7 dni "
-                   "i plan 2 miesiące”) albo `python main.py prognoza --trenuj --dni 7`.")
+        st.warning("Brak modeli na kilka dni naprzód. Wytrenuj je w zakładce **Model**.")
         return
     if horyzont.startswith("2 miesiące"):
         _plan(P, d, oid, nowe, stacja)
@@ -255,15 +245,14 @@ def renderuj():
 
     widziane = P.widziane_w_treningu(meta, oid, nowe)
     if widziane > 0:
-        st.info(f"Plik obejmuje okres, na którym model się uczył ({100 * widziane:.0f}% godzin). Żeby sprawdzenie było "
-                f"uczciwe, przed prognozą nauczymy model od nowa **bez tego okresu** - potrwa to 1-2 minuty.")
+        st.info(f"{100 * widziane:.0f}% godzin z pliku znajduje się w danych treningowych. Dla rzetelnej oceny model zostanie wytrenowany ponownie bez tego okresu (1–2 min).")
+    pogoda = True                                                   # pogoda zawsze z Open-Meteo
     with st.expander("Ustawienia zaawansowane"):
-        pogoda = st.checkbox("Pobierz aktualną prognozę pogody z internetu", value=True, key="tp_pogoda")
-        uczciwie = st.checkbox("Ucz model bez okresu z pliku (uczciwe sprawdzenie)", value=widziane > 0, key="tp_uczciwie",
+        uczciwie = st.checkbox("Uczciwy backtest (model bez okresu z pliku)", value=widziane > 0, key="tp_uczciwie",
                                disabled=nowe is None)
 
     if st.button("Przygotuj prognozę", type="primary", key="tp_start"):
-        with st.spinner("Liczę prognozę..." + (" (najpierw uczę model bez okresu z pliku, 1-2 min)" if uczciwie and nowe is not None else "")):
+        with st.spinner("Obliczanie prognozy..." + (" (trening modelu bez okresu z pliku, 1–2 min)" if uczciwie and nowe is not None else "")):
             try:
                 if horyzont.startswith("Tydzień"):
                     w, m, mi, j, tydz, bl = P.uruchom_dni(oid, nowe, d=d, stacja=stacja, pobierz_pogode=pogoda,
@@ -279,7 +268,7 @@ def renderuj():
             except ValueError as e:
                 st.error(str(e))
             except Exception as e:
-                st.error(f"Coś poszło nie tak: {e}")
+                st.error(f"Błąd obliczeń: {e}")
 
     prog = st.session_state.get("prog_wynik")
     if prog is not None and prog[0] == oid:
@@ -288,16 +277,12 @@ def renderuj():
         if horyzont.startswith("Tydzień") and tydz is not None and tydz[0] == oid:
             _tydzien(tydz[1], tydz[2])
             st.divider()
-            st.markdown("#### Szczegóły pierwszej doby")
+            st.markdown("#### Pierwsza doba")
         pokaz_podsumowanie(prog, st.session_state.get("prog_opis", {}), d)
-        with st.expander("Jak to liczymy?"):
+        with st.expander("Metodyka"):
             st.markdown("""
-- Model uczy się na historii zużycia energii pompowni, kalendarzu (dni wolne, święta, ferie) i pogodzie,
-  w tym **prognozie pogody wydanej dzień wcześniej** - tak, jak byłoby naprawdę.
-- **Sprawdzenie na danych z pliku:** dla każdego dnia liczymy prognozę tylko z informacji znanych dzień wcześniej
-  i porównujemy z tym, ile pompownia zużyła naprawdę. **Średni błąd** to o ile średnio się myliliśmy, w procentach
-  dziennego zużycia.
-- Najtrudniejsze są **dni z ulewą** - woda deszczowa trafia do kanalizacji, a deszcz trudno dokładnie przewidzieć.
-- Na podstawie czego powstała prognoza (pogoda, kalendarz, porównanie z prostymi metodami): zakładka
-  *Prognoza – szczegóły*. Jak dobry jest model ogólnie: zakładka *Model*.
+- **Model:** XGBoost na historii zużycia, kalendarzu i pogodzie, w tym prognozie pogody wydanej dzień wcześniej (D-1).
+- **Backtest:** każda doba z pliku prognozowana tylko z danych znanych dzień wcześniej. WAPE = średni błąd dobowy.
+- **Największy błąd:** doby z intensywnym opadem (trafność prognozy opadu).
+- Dane wejściowe i porównanie z prostymi metodami: **Szczegóły prognozy**. Ogólna jakość: zakładka **Model**.
 """)

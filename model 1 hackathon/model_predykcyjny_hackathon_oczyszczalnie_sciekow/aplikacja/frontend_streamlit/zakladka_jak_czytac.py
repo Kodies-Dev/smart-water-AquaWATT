@@ -1,60 +1,46 @@
-"""Zakladka Jak czytac wyniki - poradnik do prognozy energii. Czysty tekst, zero logiki."""
+"""Zakladka Zalecenia dla uzytkownika - wymagania dotyczace danych, metodyka prognozy i anomalii, ograniczenia. Czysty tekst, zero logiki."""
 
 import streamlit as st
 
 
 def renderuj():
-    st.subheader("Dobre praktyki – dane i wyniki prognozy")
-    with st.expander("0. Jak przygotowac plik do prognozy", expanded=True):
+    st.subheader("Zalecenia dla użytkownika")
+    with st.expander("Wymagania dotyczące danych", expanded=True):
         st.markdown("""
-- **Co najmniej ok. 5 tygodni** godzinowego (albo gestszego) zuzycia energii - model patrzy na zuzycie dobe, tydzien
-  i dwa tygodnie wczesniej oraz na typowy profil z 4 tygodni. Dla pompowni z bazy krotszy plik wystarczy
-  (wczesniejsze tygodnie dobieramy z bazy).
-- **Formaty:** odczyty licznika `data;godzina;typ;wartosc;status` (jak pliki `mock_*` - przyrosty liczymy sami,
-  reset/wymiana licznika jest rozpoznawana), raport dystrybutora `Rap_godzinowy_*.csv`, albo dwie kolumny `czas;kwh`.
-- **Czas lokalny** (polski, ze zmiana czasu) - tak jak w plikach z liczników. W formacie `czas;kwh` czas oznacza
-  **poczatek godziny** (jesli koniec - zaznacz to w zakladce Szczegoly techniczne / CLI `--koniec-godziny`).
-- Separator (`;` `,` tab) i kodowanie (UTF-8, Windows-1250) rozpoznajemy sami.
-- **Braki w danych** (pojedyncze godziny, kilka dob) nie przeszkadzaja - takie doby po prostu nie wchodza do oceny.
-- **Wybierz wlasciwa pompownie** w panelu - nazwa z bazy (np. RY_PZ1) daje dluzsza historie; nowa pompownia
-  dostaje model ogolny (przenosi sie dobrze - sprawdzone na Rybniku).
+- **Zakres:** co najmniej ok. 5 tygodni danych godzinowych (lub gęstszych). Dla pomp znanych w modelu (np. RY_PZ1) wystarczy krótszy plik.
+- **Formaty** (rozpoznawane automatycznie):
+  - odczyty narastające licznika `data;godzina;typ;wartosc;status` – przyrosty są liczone automatycznie, resety i wymiany licznika wykrywane,
+  - raport dystrybutora `Rap_godzinowy_*.csv` – znacznik czasu oznacza koniec godziny,
+  - `czas;kwh` – czas lokalny, początek godziny.
+- **Separator i kodowanie** (UTF-8, Windows-1250) są wykrywane automatycznie; w razie potrzeby można je wskazać w panelu bocznym.
+- **Czas:** lokalny (Europe/Warsaw), ze zmianą czasu.
+- **Braki:** pojedyncze godziny i krótkie luki są dopuszczalne; niepełne doby nie wchodzą do oceny dokładności.
+- **Pompownia:** wybierana w panelu. Nowa pompownia korzysta z modelu ogólnego i wymaga pełnej historii w pliku.
 """)
-    with st.expander("1. Co prognozujemy", expanded=True):
+    with st.expander("Prognoza zużycia energii"):
         st.markdown("""
-**Zuzycie energii elektrycznej [kWh] przez pompownie sciekow w kazdej godzinie nastepnej doby.**
-Prognoza dobowa i miesieczna to suma godzinowa. Model korzysta tylko z tego, co jest znane dobe wczesniej:
-historii zuzycia, kalendarza (swieta, ferie, wakacje), opadu i pogody do chwili prognozy oraz **prognozy pogody
-wydanej dzien wczesniej** (Open-Meteo).
+- **Przedmiot prognozy:** zużycie energii [kWh] w każdej godzinie kolejnej doby. Sumy dobowe i miesięczne są agregowane z wartości godzinowych.
+- **Zmienne modelu:** historia zużycia, kalendarz (święta, ferie, wakacje), pogoda zmierzona oraz prognoza pogody wydana dzień wcześniej (D-1, Open-Meteo).
+- **Horyzonty:** jutro (24 h) · tydzień (7 dni, osobny model dla każdego dnia) · plan na 2 miesiące (model dobowy z przedziałem P10–P90).
+- **WAPE** = Σ|błąd| / Σ zużycia. Wartość dobowa jest liczona z pełnych dób; godzinowa jest zawsze wyższa.
+- **Bias:** systematyczne zawyżanie (+) lub zaniżanie (−) sumy.
+- **Metody referencyjne:** „jak wczoraj”, „jak tydzień temu”, mediana z 4 tygodni. Model jest uzasadniony, gdy wyraźnie je przewyższa.
 """)
-    with st.expander("2. Miary bledu"):
+    with st.expander("Walidacja (backtest)"):
         st.markdown("""
-- **WAPE** = suma |bledow| / suma zuzycia. 10% oznacza, ze przecietnie mylimy sie o 10% zuzycia.
-  Dobowe liczone z pelnych dob, godzinowe z kazdej godziny (zawsze wieksze - pojedyncze godziny sa bardziej losowe).
-- **Bias** - czy model systematycznie zawyza (+) czy zaniza (-) sume. Model celuje w mediane, wiec na pompowniach
-  z gwaltownymi szczytami po ulewach lekko zaniza sumy.
-- **Proste reguly** do porownania: *wczoraj o tej godzinie*, *tydzien temu*, *mediana z 4 tygodni*. Model ma sens,
-  jesli jest od nich wyraznie lepszy.
+- **Backtest:** dla każdej doby z pliku prognoza jest liczona wyłącznie z danych znanych w D-1, a następnie porównywana z wartością rzeczywistą.
+- **Uczciwy backtest:** jeśli plik pokrywa się z okresem treningu, wynik byłby zawyżony – aplikacja sygnalizuje to ostrzeżeniem.
+  Wariant uczciwy trenuje model od nowa bez okresu z pliku (1–2 min) i ocenia go na danych, których model nie widział.
 """)
-    with st.expander("3. Backtest i uczciwy backtest"):
+    with st.expander("Wody przypadkowe i anomalie"):
         st.markdown("""
-**Backtest** - dla kazdej doby w pliku liczymy prognoze tak, jakby byla wydana dzien wczesniej, i porownujemy
-z rzeczywistoscia. **Uwaga:** zapisany model widzial w treningu wszystkie dane z bazy. Jesli plik obejmuje ten
-okres, wynik bylby zawyzony - aplikacja to pokaze. **Uczciwy backtest** trenuje model od nowa bez okresu z pliku
-(1-2 min), czyli sprawdza go na danych, ktorych nie znal.
+- **Baza bezdeszczowa:** typowy przepływ lub zużycie energii w suche dni (ten sam dzień tygodnia, ostatnie tygodnie).
+- **Zdarzenie:** kilka kolejnych godzin z nadwyżką ponad bazę; typ („dopływ opadowy”, „po opadach”, „bez opadu”) wynika z opadu w trakcie zdarzenia i przed nim.
+- **Infiltracja:** udział przepływu nocnego w średnim przepływie doby w dni suche. **Dopływ opadowy:** nadwyżka przepływu na 1 mm opadu.
+- **Anomalie ML:** Isolation Forest, LOF i One-Class SVM; doba jest uznana za nietypową, gdy wskazuje ją co najmniej 2 z 3 modeli.
 """)
-    with st.expander("4. Formaty plikow w zakladce Prognoza"):
+    with st.expander("Ograniczenia"):
         st.markdown("""
-Rozpoznawane automatycznie:
-- **licznik narastajacy** `data;godzina;typ;wartosc;status` (jak pliki `mock_*`) - przyrosty liczone jak w ETL,
-- **raport dystrybutora** jak `Rap_godzinowy_*.csv` (znacznik = koniec godziny),
-- **prosty** `czas;kwh` - czas lokalny = poczatek godziny (albo zaznacz *koniec godziny*).
-
-Model potrzebuje ok. **5 tygodni historii**. Dla pompowni z bazy (np. RY_PZ1) wczesniejsze tygodnie sa dociagane
-z bazy; nowa pompownia musi miec je w pliku.
-""")
-    with st.expander("5. Gdzie model sie myli"):
-        st.markdown("""
-W **suche doby** blad jest maly (kilka procent). Najwiekszy blad jest w **doby z ulewa** - zuzycie rosnie przez wody
-opadowe, a prognoza deszczu sprzed doby nie zawsze trafia. Z idealna prognoza pogody blad bylby wyraznie mniejszy -
-to pokazuje zakladka *Wyniki modeli*.
+- **Dni z intensywnym opadem** mają największy błąd – ograniczeniem jest trafność prognozy opadu. Porównanie dób suchych i mokrych: zakładka **Model**.
+- **Plan na 2 miesiące** opiera się na typowej pogodzie dla pory roku; służy do planowania budżetu i zakupu energii, nie do prognoz godzinowych.
 """)

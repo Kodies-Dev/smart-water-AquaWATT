@@ -1,9 +1,9 @@
 """
-Zakladka Dane - podglad wczytanego zbioru, porownanie kilku zbiorow naraz,
-laczenie tabel (union / join jak w SQL), tabela przestawna i zapytania SQL.
+Zakładka Dane - podgląd wczytanego zbioru, porównanie kilku zbiorów naraz,
+łączenie tabel (union / join jak w SQL), tabela przestawna i zapytania SQL.
 
-To najbardziej rozbudowana zakladka w calej aplikacji, bo tu dzieje sie
-cale przygotowanie danych zanim cokolwiek trafi do detekcji anomalii.
+To najbardziej rozbudowana zakładka w całej aplikacji, bo tu dzieje się
+całe przygotowanie danych zanim cokolwiek trafi do detekcji anomalii.
 """
 
 import pandas as pd
@@ -21,7 +21,7 @@ from frontend_streamlit.wykresy import Wykresy
 
 
 def _sekcja_podglad(raw_df, all_num_cols):
-    st.subheader(f"Zbior: {st.session_state.aktywny}")
+    st.subheader(f"Zbiór: {st.session_state.aktywny}")
     st.dataframe(raw_df.head(200), width="stretch")
 
     c1, c2, c3 = st.columns(3)  # dzieli pole na 3 rowne kolumny
@@ -34,33 +34,33 @@ def _sekcja_podglad(raw_df, all_num_cols):
         st.dataframe(raw_df[all_num_cols].describe().T, width="stretch")  # transponuje describe,
         # nazwy sa wierszami zamiast kolumnami
     else:
-        st.warning("Zbior nie ma kolumn numerycznych - detekcja anomalii bedzie niemozliwa.")
+        st.warning("Zbiór nie ma kolumn numerycznych - detekcja anomalii będzie niemożliwa.")
 
     braki = raw_df.isnull().sum()
     braki = braki[braki > 0]
     if len(braki) > 0:
         st.subheader("Braki danych")
-        st.dataframe(braki.rename("liczba brakow"), width="stretch")
+        st.dataframe(braki.rename("liczba braków"), width="stretch")
     else:
-        st.success("Brak pustych wartosci w danych.")
+        st.success("Brak pustych wartości w danych.")
 
     st.divider()
     c1, c2 = st.columns(2)
     with c1:
         Narzedzia.przycisk_pobierania(
-            "Pobierz ten zbior (CSV)", Narzedzia.to_csv_bytes(raw_df),
+            "Pobierz ten zbiór (CSV)", Narzedzia.to_csv_bytes(raw_df),
             f"{st.session_state.aktywny}.csv", "text/csv", key="pob_zbior")
     with c2:
-        if st.button("Usun ten zbior z pamieci"):
+        if st.button("Usuń ten zbiór z pamięci"):
             MagazynDanych.usun(st.session_state.aktywny)
             st.rerun()
 
 
 def _sekcja_porownanie():
-    st.subheader("Porownanie wczytanych zbiorow")
+    st.subheader("Porównanie wczytanych zbiorów")
 
     if len(st.session_state.zbiory) < 2:
-        st.info("Wgraj przynajmniej dwa pliki, zeby bylo co porownywac.")
+        st.info("Wgraj przynajmniej dwa pliki, żeby było co porównywać.")
         return
 
     wiersze = []
@@ -71,34 +71,34 @@ def _sekcja_porownanie():
             "Wierszy": len(d),
             "Kolumn": len(d.columns),
             "Kolumn liczbowych": len(num.columns),
-            "Brakow danych": int(d.isnull().sum().sum()),
+            "Braków danych": int(d.isnull().sum().sum()),
         })
     st.dataframe(pd.DataFrame(wiersze), width="stretch", hide_index=True)
 
-    st.markdown("#### Zgodnosc kolumn")
+    st.markdown("#### Zgodność kolumn")
     nazwy = list(st.session_state.zbiory.keys())
     wspolne = set(st.session_state.zbiory[nazwy[0]].columns)
     for n in nazwy[1:]:
         wspolne &= set(st.session_state.zbiory[n].columns)
 
     if wspolne:
-        st.success(f"Kolumny wspolne dla wszystkich zbiorow ({len(wspolne)}): "
+        st.success(f"Kolumny wspólne dla wszystkich zbiorów ({len(wspolne)}): "
                    + ", ".join(sorted(map(str, wspolne))))
     else:
-        st.warning("Zbiory nie maja ani jednej wspolnej kolumny.")
+        st.warning("Zbiory nie mają ani jednej wspólnej kolumny.")
 
     for nazwa, d in st.session_state.zbiory.items():
         tylko_tu = set(d.columns) - wspolne
         if tylko_tu:
-            st.caption(f"{nazwa} - kolumny wystepujace tylko tutaj: "
+            st.caption(f"{nazwa} - kolumny występujące tylko tutaj: "
                        + ", ".join(sorted(map(str, tylko_tu))))
 
-    st.markdown("#### Porownanie statystyk wybranej kolumny")
+    st.markdown("#### Porównanie statystyk wybranej kolumny")
     kol_wspolne_num = sorted([c for c in wspolne
                               if all(pd.api.types.is_numeric_dtype(d[c])
                                      for d in st.session_state.zbiory.values())])
     if not kol_wspolne_num:
-        st.info("Brak wspolnych kolumn liczbowych do porownania.")
+        st.info("Brak wspólnych kolumn liczbowych do porównania.")
         return
 
     kol = st.selectbox("Kolumna liczbowa", kol_wspolne_num, key="por_kol")
@@ -117,45 +117,45 @@ def _sekcja_porownanie():
     fig = go.Figure()
     for nazwa, d in st.session_state.zbiory.items():
         fig.add_trace(go.Box(y=d[kol].dropna(), name=nazwa))
-    Wykresy.show(Wykresy.style_fig(fig, f"Rozklad kolumny {kol} w poszczegolnych zbiorach",
+    Wykresy.show(Wykresy.style_fig(fig, f"Rozkład kolumny {kol} w poszczególnych zbiorach",
                                    None, kol, None))
 
 
 def _sekcja_laczenie():
-    st.subheader("Laczenie tabel")
+    st.subheader("Łączenie tabel")
 
     if len(st.session_state.zbiory) < 2:
         st.info("Potrzebne sa przynajmniej dwa zbiory.")
         return
 
     tryb = st.radio(
-        "Sposob laczenia",
-        ["Doklejanie wierszy (te same kolumny)", "Zlaczenie po kluczu (join)"],
+        "Sposób łączenia",
+        ["Doklejanie wierszy (te same kolumny)", "Złączenie po kluczu (join)"],
         key="tryb_lacz",
     )
     nazwy = list(st.session_state.zbiory.keys())
 
     # --- union ---
     if tryb.startswith("Doklejanie"):
-        st.caption("Wiersze kolejnych zbiorow trafiaja jeden pod drugi. "
+        st.caption("Wiersze kolejnych zbiorów trafiają jeden pod drugi. "
                    "Odpowiednik UNION ALL w SQL.")
-        wybrane = st.multiselect("Zbiory do polaczenia", nazwy, default=nazwy[:2],
+        wybrane = st.multiselect("Zbiory do połączenia", nazwy, default=nazwy[:2],
                                  key="union_zbiory")
-        dodaj_kol = st.checkbox("Dodaj kolumne z nazwa zbioru zrodlowego", value=True,
-                                help="Przydatne, gdy pozniej chcesz rozroznic pochodzenie wiersza "
-                                     "albo uzyc jej jako kolumny jednostki w trybie panelowym.")
+        dodaj_kol = st.checkbox("Dodaj kolumnę z nazwa zbioru źródłowego", value=True,
+                                help="Przydatne, gdy później chcesz rozróżnić pochodzenie wiersza "
+                                     "albo użyć jej jako kolumny jednostki w trybie panelowym.")
 
         nazwa_union = st.text_input("Nazwa nowego zbioru", "polaczone", key="union_nazwa",
-                                    help="Pod ta nazwa wynik pojawi sie na liscie zbiorow "
-                                         "i jako tabela w zakladce SQL.")
+                                    help="Pod ta nazwa wynik pojawi się na liście zbiorów "
+                                         "i jako tabela w zakładce SQL.")
 
         if len(wybrane) >= 2:
             zestawy = [set(st.session_state.zbiory[n].columns) for n in wybrane]
             wspolne = set.intersection(*zestawy)
             roznice = set.union(*zestawy) - wspolne
             if roznice:
-                st.warning("Zbiory roznia sie kolumnami. Niepasujace kolumny beda "
-                           "wypelnione pustymi wartosciami: " + ", ".join(sorted(map(str, roznice))))
+                st.warning("Zbiory różnią się kolumnami. Niepasujące kolumny będą "
+                           "wypełnione pustymi wartościami: " + ", ".join(sorted(map(str, roznice))))
 
             if st.button("Polacz", type="primary", key="btn_union"):
                 czesci = []
@@ -166,12 +166,12 @@ def _sekcja_laczenie():
                     czesci.append(d)
                 wynik = pd.concat(czesci, ignore_index=True)
                 nowa = MagazynDanych.dodaj(nazwa_union or "polaczone", wynik)
-                st.success(f"Utworzono zbior '{nowa}' - {len(wynik)} wierszy.")
+                st.success(f"Utworzono zbiór '{nowa}' - {len(wynik)} wierszy.")
                 st.rerun()
 
     # --- join ---
     else:
-        st.caption("Odpowiednik JOIN w SQL - wiersze laczone sa po wspolnym kluczu.")
+        st.caption("Odpowiednik JOIN w SQL - wiersze łączone sa po wspólnym kluczu.")
         c1, c2 = st.columns(2)
         with c1:
             lewa = st.selectbox("Tabela lewa", nazwy, key="join_lewa")
@@ -192,8 +192,8 @@ def _sekcja_laczenie():
                                        "outer - wszystko z obu stron.")
 
         nazwa_join = st.text_input("Nazwa nowego zbioru", f"{lewa}_x_{prawa}", key="join_nazwa",
-                                   help="Pod ta nazwa wynik pojawi sie na liscie zbiorow "
-                                        "i jako tabela w zakladce SQL.")
+                                   help="Pod ta nazwa wynik pojawi się na liście zbiorów "
+                                        "i jako tabela w zakładce SQL.")
 
         if klucz_l and klucz_p and len(klucz_l) == len(klucz_p):
             if st.button("Polacz", type="primary", key="btn_join"):
@@ -201,48 +201,48 @@ def _sekcja_laczenie():
                     wynik = dl.merge(dp, left_on=klucz_l, right_on=klucz_p,
                                      how=rodzaj, suffixes=("", f"_{prawa}"))
                     nowa = MagazynDanych.dodaj(nazwa_join or f"{lewa}_x_{prawa}", wynik)
-                    st.success(f"Utworzono zbior '{nowa}' - {len(wynik)} wierszy, "
+                    st.success(f"Utworzono zbiór '{nowa}' - {len(wynik)} wierszy, "
                                f"{len(wynik.columns)} kolumn.")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Blad laczenia: {e}")
+                    st.error(f"Błąd łączenia: {e}")
         elif klucz_l or klucz_p:
-            st.warning("Liczba kolumn klucza po obu stronach musi byc taka sama.")
+            st.warning("Liczba kolumn klucza po obu stronach musi być taka sama.")
 
 
 def _sekcja_pivot(raw_df, all_num_cols):
     st.subheader("Tabela przestawna")
-    st.caption("Wynik mozna zapisac jako nowy zbior i analizowac go dalej "
+    st.caption("Wynik można zapisać jako nowy zbiór i analizować go dalej "
                "na wykresach oraz w detekcji anomalii.")
 
     c1, c2 = st.columns(2)
     with c1:
         wiersze_pv = st.multiselect("Wiersze (grupowanie)", list(raw_df.columns), key="pv_index")
-        wartosci_pv = st.multiselect("Wartosci (agregowane)", all_num_cols, key="pv_values")
+        wartosci_pv = st.multiselect("Wartości (agregowane)", all_num_cols, key="pv_values")
     with c2:
         kolumny_pv = st.multiselect("Kolumny (opcjonalnie)", list(raw_df.columns), key="pv_cols")
         agregacja = st.selectbox(
-            "Funkcja agregujaca",
+            "Funkcja agregująca",
             ["bez agregacji", "sum", "mean", "median", "min", "max", "count", "nunique", "std"],
             key="pv_agg",
-            help="'bez agregacji' przestawia dane jeden do jednego, bez laczenia wierszy. "
-                 "Wymaga, zeby kazda para (wiersz, kolumna) wystepowala tylko RAZ - inaczej "
-                 "nie wiadomo ktora z kilku wartosci wstawic do jednej komorki.")
+            help="'bez agregacji' przestawia dane jeden do jednego, bez łączenia wierszy. "
+                 "Wymaga, żeby każda para (wiersz, kolumna) występowała tylko RAZ - inaczej "
+                 "nie wiadomo która z kilku wartości wstawić do jednej komórki.")
 
     st.markdown("#### Czyszczenie wyniku")
     c1, c2, c3 = st.columns(3)
     with c1:
-        usun_null = st.checkbox("Usun wiersze z pustymi wartosciami", value=False,
-                                help="Wiersze, w ktorych ktorakolwiek kolumna wynikowa jest pusta.")
+        usun_null = st.checkbox("Usuń wiersze z pustymi wartościami", value=False,
+                                help="Wiersze, w których którakolwiek kolumna wynikowa jest pusta.")
     with c2:
-        usun_zera = st.checkbox("Usun wiersze z zerami", value=False,
-                                help="Wiersze, w ktorych ktorakolwiek kolumna wynikowa rowna sie zero.")
+        usun_zera = st.checkbox("Usuń wiersze z zerami", value=False,
+                                help="Wiersze, w których którakolwiek kolumna wynikowa równa się zero.")
     with c3:
-        usun_puste_all = st.checkbox("Usun wiersze calkiem puste", value=True,
-                                     help="Wiersze, w ktorych WSZYSTKIE kolumny wynikowe sa puste.")
+        usun_puste_all = st.checkbox("Usuń wiersze całkiem puste", value=True,
+                                     help="Wiersze, w których WSZYSTKIE kolumny wynikowe sa puste.")
 
     if not (wiersze_pv and wartosci_pv):
-        st.info("Wybierz przynajmniej jedna kolumne w polu Wiersze oraz jedna w polu Wartosci.")
+        st.info("Wybierz przynajmniej jedna kolumnę w polu Wiersze oraz jedna w polu Wartości.")
         return
 
     try:
@@ -280,7 +280,7 @@ def _sekcja_pivot(raw_df, all_num_cols):
 
         usuniete = przed - len(pv)
         if usuniete > 0:
-            st.caption(f"Usunieto {usuniete} z {przed} wierszy wyniku.")
+            st.caption(f"Usunięto {usuniete} z {przed} wierszy wyniku.")
 
         st.dataframe(pv.head(300), width="stretch")
         st.caption(f"Wynik: {len(pv)} wierszy, {len(pv.columns)} kolumn.")
@@ -290,7 +290,7 @@ def _sekcja_pivot(raw_df, all_num_cols):
             nazwa_pv = st.text_input("Nazwa nowego zbioru", "przestawna", key="pv_nazwa")
         with c2:
             st.write("")
-            if st.button("Zapisz jako zbior", type="primary", key="btn_pv"):
+            if st.button("Zapisz jako zbiór", type="primary", key="btn_pv"):
                 nowa = MagazynDanych.dodaj(nazwa_pv or "przestawna", pv)
                 st.success(f"Zapisano jako '{nowa}' i ustawiono jako aktywny.")
                 st.rerun()
@@ -301,16 +301,16 @@ def _sekcja_pivot(raw_df, all_num_cols):
     except ValueError as e:
         if "duplicate" in str(e).lower():
             st.error(
-                "Nie da sie przestawic bez agregacji, bo ta sama para (wiersz, kolumna) "
-                "wystepuje w danych wiecej niz raz - do jednej komorki pasowaloby kilka "
-                "roznych wartosci naraz.\n\n"
-                "Wybierz funkcje agregujaca (np. sum albo mean), albo dodaj do pola Wiersze "
-                "kolumne, ktora rozroznia te powtorzenia."
+                "Nie da się przestawić bez agregacji, bo ta sama para (wiersz, kolumna) "
+                "występuje w danych więcej niż raz - do jednej komórki pasowałoby kilka "
+                "różnych wartości naraz.\n\n"
+                "Wybierz funkcje agregująca (np. sum albo mean), albo dodaj do pola Wiersze "
+                "kolumnę, która rozróżnia te powtórzenia."
             )
         else:
-            st.error(f"Blad tworzenia tabeli przestawnej: {e}")
+            st.error(f"Błąd tworzenia tabeli przestawnej: {e}")
     except Exception as e:
-        st.error(f"Blad tworzenia tabeli przestawnej: {e}")
+        st.error(f"Błąd tworzenia tabeli przestawnej: {e}")
 
 
 def _sekcja_sql():
@@ -320,11 +320,11 @@ def _sekcja_sql():
         st.error("Biblioteka duckdb nie jest zainstalowana. Uruchom: pip install duckdb")
         return
 
-    st.caption("Kazdy wczytany zbior jest dostepny jako tabela pod swoja nazwa. "
-               "Dziala pelny SQL: JOIN, GROUP BY, podzapytania, funkcje okna.")
+    st.caption("Każdy wczytany zbiór jest dostępny jako tabela pod swoją nazwa. "
+               "Działa pełny SQL: JOIN, GROUP BY, podzapytania, funkcje okna.")
 
     tabele = list(st.session_state.zbiory.keys())
-    st.markdown("**Dostepne tabele:**")
+    st.markdown("**Dostępne tabele:**")
     for t in tabele:
         d = st.session_state.zbiory[t]
         st.caption(f"  {t}  ({len(d)} wierszy)  -  kolumny: "
@@ -351,16 +351,16 @@ def _sekcja_sql():
             st.session_state["sql_wynik"] = wynik_sql
         except Exception as e:
             st.session_state["sql_wynik"] = None
-            st.error(f"Blad zapytania: {e}")
+            st.error(f"Błąd zapytania: {e}")
 
     wynik_sql = st.session_state.get("sql_wynik")
     if wynik_sql is not None:
-        st.success(f"Zwrocono {len(wynik_sql)} wierszy, {len(wynik_sql.columns)} kolumn.")
+        st.success(f"Zwrócono {len(wynik_sql)} wierszy, {len(wynik_sql.columns)} kolumn.")
         st.dataframe(wynik_sql.head(300), width="stretch")
 
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("Zapisz wynik jako zbior", type="primary", key="btn_sql_save"):
+            if st.button("Zapisz wynik jako zbiór", type="primary", key="btn_sql_save"):
                 nowa = MagazynDanych.dodaj(nazwa_sql or "wynik_sql", wynik_sql)
                 st.success(f"Zapisano jako '{nowa}' i ustawiono jako aktywny.")
                 st.rerun()
@@ -372,9 +372,9 @@ def _sekcja_sql():
 
 
 def _odduplikuj_kolumny(df):
-    """Po zmianie nazw dwie kolumny moga dostac te sama nazwe - wtedy pandas
-    przy odwolaniu zwraca kilka kolumn naraz i wszystko sie sypie.
-    Dopisujemy numer do powtorzen."""
+    """Po zmianie nazw dwie kolumny mogą dostać te sama nazwę - wtedy pandas
+    przy odwołaniu zwraca kilka kolumn naraz i wszystko się sypie.
+    Dopisujemy numer do powtórzeń."""
     nowe, licznik = [], {}
     for c in df.columns:
         c = str(c)
@@ -391,53 +391,53 @@ def _odduplikuj_kolumny(df):
 
 def _sekcja_nazwy_kolumn(raw_df):
     """
-    Zmiana nazw kolumn na podstawie slownika z innego wczytanego zbioru.
+    Zmiana nazw kolumn na podstawie słownika z innego wczytanego zbioru.
 
-    Typowa sytuacja w danych urzedowych: wlasciwy plik ma kolumny nazwane
-    kodami (a01, a02, a03...), a osobny plik-slownik opisuje co kazdy kod
-    oznacza. Ta sekcja laczy jedno z drugim.
+    Typowa sytuacja w danych urzędowych: właściwy plik ma kolumny nazwane
+    kodami (a01, a02, a03...), a osobny plik-słownik opisuje co każdy kod
+    oznacza. Ta sekcja łączy jedno z drugim.
     """
     st.subheader("Zmiana nazw kolumn")
 
-    tryb = st.radio("Sposob", ["Ze slownika (inny wczytany plik)", "Recznie"],
+    tryb = st.radio("Sposob", ["Ze słownika (inny wczytany plik)", "Recznie"],
                     horizontal=True, key="tryb_nazwy")
 
     # ---------------- ze slownika ----------------
-    if tryb.startswith("Ze slownika"):
+    if tryb.startswith("Ze słownika"):
         inne = [n for n in st.session_state.zbiory if n != st.session_state.aktywny]
         if not inne:
-            st.info("Wgraj drugi plik ze slownikiem nazw - taki, ktory w jednej kolumnie ma "
-                    "kody odpowiadajace nazwom kolumn, a w innej ich pelne nazwy.")
+            st.info("Wgraj drugi plik ze słownikiem nazw - taki, który w jednej kolumnie ma "
+                    "kody odpowiadające nazwom kolumn, a w innej ich pełne nazwy.")
             return
 
         c1, c2, c3 = st.columns(3)
         with c1:
-            nazwa_sl = st.selectbox("Zbior ze slownikiem", inne, key="sl_zbior")
+            nazwa_sl = st.selectbox("Zbiór ze słownikiem", inne, key="sl_zbior")
         slownik = st.session_state.zbiory[nazwa_sl]
         with c2:
             kol_kod = st.selectbox("Kolumna z kodem", list(slownik.columns), key="sl_kod",
-                                   help="Wartosci z tej kolumny beda dopasowywane do obecnych "
+                                   help="Wartości z tej kolumny będą dopasowywane do obecnych "
                                         "nazw kolumn analizowanego zbioru.")
         with c3:
             kol_nazwa = st.multiselect("Kolumny z nazwa", list(slownik.columns), key="sl_nazwa",
-                                       help="Zrodlo nowej nazwy. Mozna wybrac kilka - zostana "
-                                            "polaczone separatorem.")
+                                       help="Źródło nowej nazwy. Można wybrać kilka - zostaną "
+                                            "połączone separatorem.")
 
         if not kol_nazwa:
-            st.info("Wybierz przynajmniej jedna kolumne z nazwa.")
+            st.info("Wybierz przynajmniej jedna kolumnę z nazwa.")
             return
 
         c1, c2, c3 = st.columns(3)
         with c1:
             sep_nazw = st.text_input("Separator", " | ", key="sl_sep")
         with c2:
-            maks_dl = Pola.num_field("Maks. dlugosc nazwy", 5, 300, 60, 5, "sl_maxdl",
-                                     help="Dlugie opisy sa obcinane. Nazwy dluzsze niz kilkadziesiat "
-                                          "znakow sa nieczytelne w tabelach i na wykresach.")
+            maks_dl = Pola.num_field("Maks. długość nazwy", 5, 300, 60, 5, "sl_maxdl",
+                                     help="Długie opisy sa obcinane. Nazwy dłuższe niż kilkadziesiąt "
+                                          "znaków sa nieczytelne w tabelach i na wykresach.")
         with c3:
             zachowaj_kod = st.checkbox("Zachowaj kod w nazwie", value=True,
-                                       help="Nowa nazwa bedzie postaci 'a01 - Gotowka w kasie'. "
-                                            "Ulatwia odnalezienie sie w danych po zmianie.")
+                                       help="Nowa nazwa będzie postaci 'a01 - Gotowka w kasie'. "
+                                            "Ulatwia odnalezienie się w danych po zmianie.")
 
         # Slownik ma zwykle wiele wierszy na ten sam kod (np. jeden na kazdy okres).
         # Bierzemy pierwsze wystapienie kazdego kodu - reszta to powtorzenia.
@@ -445,8 +445,8 @@ def _sekcja_nazwy_kolumn(raw_df):
         przed = len(sl)
         sl = sl.drop_duplicates(subset=[kol_kod], keep="first")
         if przed > len(sl):
-            st.caption(f"Slownik ma {przed} wierszy, ale tylko {len(sl)} unikalnych kodow - "
-                       f"dla powtorzen wziete zostalo pierwsze wystapienie.")
+            st.caption(f"Słownik ma {przed} wierszy, ale tylko {len(sl)} unikalnych kodów - "
+                       f"dla powtórzeń wzięte zostało pierwsze wystąpienie.")
 
         mapowanie = {}
         for _, w in sl.iterrows():
@@ -472,14 +472,14 @@ def _sekcja_nazwy_kolumn(raw_df):
 
         if not trafione:
             st.warning(
-                "Zadna kolumna nie pasuje do kodow ze slownika. Sprawdz, czy wybrana kolumna "
-                "z kodem jest wlasciwa - jej wartosci musza byc dokladnie takie same jak nazwy "
+                "Żadna kolumna nie pasuje do kodów ze słownika. Sprawdź, czy wybrana kolumna "
+                "z kodem jest właściwa - jej wartości muszą być dokładnie takie same jak nazwy "
                 "kolumn analizowanego zbioru."
             )
-            with st.expander("Podglad: co jest po obu stronach"):
+            with st.expander("Podgląd: co jest po obu stronach"):
                 st.caption("Nazwy kolumn analizowanego zbioru:")
                 st.text(", ".join(obecne[:30]))
-                st.caption(f"Przykladowe kody z kolumny '{kol_kod}':")
+                st.caption(f"Przykładowe kody z kolumny '{kol_kod}':")
                 st.text(", ".join(map(str, sl[kol_kod].head(30).tolist())))
             return
 
@@ -490,20 +490,20 @@ def _sekcja_nazwy_kolumn(raw_df):
         powtorzone = len(nowe_nazwy) - len(set(nowe_nazwy))
         if powtorzone > 0:
             st.warning(
-                f"{powtorzone} z {len(nowe_nazwy)} nowych nazw powtarza sie. Do powtorzen zostanie "
-                "dopisany numer, ale kolumny beda trudne do odroznienia.\n\n"
-                "Co pomaga: zaznaczyc 'Zachowaj kod w nazwie', zwiekszyc maksymalna dlugosc "
-                "albo wybrac inna kolumne slownika - taka, ktora faktycznie rozroznia pola, "
-                "a nie powtarza ten sam naglowek dzialu."
+                f"{powtorzone} z {len(nowe_nazwy)} nowych nazw powtarza się. Do powtórzeń zostanie "
+                "dopisany numer, ale kolumny będą trudne do odróżnienia.\n\n"
+                "Co pomaga: zaznaczyć 'Zachowaj kod w nazwie', zwiększyć maksymalna długość "
+                "albo wybrać inna kolumnę słownika - taka, która faktycznie rozróżnia pola, "
+                "a nie powtarza ten sam nagłówek działu."
             )
 
-        st.markdown("#### Podglad zmian")
+        st.markdown("#### Podgląd zmian")
         st.dataframe(pd.DataFrame({"Obecna nazwa": list(trafione.keys()),
                                    "Nowa nazwa": list(trafione.values())}),
                      width="stretch", hide_index=True)
 
         if nietrafione:
-            with st.expander(f"Kolumny bez dopasowania ({len(nietrafione)}) - zostana bez zmian"):
+            with st.expander(f"Kolumny bez dopasowania ({len(nietrafione)}) - zostaną bez zmian"):
                 st.text(", ".join(nietrafione))
 
         c1, c2 = st.columns(2)
@@ -512,15 +512,15 @@ def _sekcja_nazwy_kolumn(raw_df):
                                          f"{st.session_state.aktywny}_nazwane", key="sl_nazwa_zb")
         with c2:
             st.write("")
-            if st.button("Zmien nazwy", type="primary", key="btn_sl"):
+            if st.button("Zmień nazwy", type="primary", key="btn_sl"):
                 wynik = _odduplikuj_kolumny(raw_df.rename(columns=trafione))
                 nowa = MagazynDanych.dodaj(nazwa_wyniku or "nazwane", wynik)
-                st.success(f"Utworzono zbior '{nowa}' - zmieniono {len(trafione)} nazw kolumn.")
+                st.success(f"Utworzono zbiór '{nowa}' - zmieniono {len(trafione)} nazw kolumn.")
                 st.rerun()
 
     # ---------------- recznie ----------------
     else:
-        st.caption("Popraw nazwy w tabeli. Puste pole zostawia nazwe bez zmian.")
+        st.caption("Popraw nazwy w tabeli. Puste pole zostawia nazwę bez zmian.")
 
         zmiany = st.data_editor(
             pd.DataFrame({"Obecna nazwa": [str(c) for c in raw_df.columns],
@@ -539,10 +539,10 @@ def _sekcja_nazwy_kolumn(raw_df):
                                          f"{st.session_state.aktywny}_nazwane", key="rec_nazwa_zb")
         with c2:
             st.write("")
-            if st.button("Zmien nazwy", type="primary", key="btn_rec", disabled=not mapa):
+            if st.button("Zmień nazwy", type="primary", key="btn_rec", disabled=not mapa):
                 wynik = _odduplikuj_kolumny(raw_df.rename(columns=mapa))
                 nowa = MagazynDanych.dodaj(nazwa_wyniku or "nazwane", wynik)
-                st.success(f"Utworzono zbior '{nowa}' - zmieniono {len(mapa)} nazw kolumn.")
+                st.success(f"Utworzono zbiór '{nowa}' - zmieniono {len(mapa)} nazw kolumn.")
                 st.rerun()
 
         if mapa:
@@ -554,16 +554,16 @@ def renderuj():
     all_num_cols = list(raw_df.select_dtypes(include="number").columns)
 
     sek = st.radio(
-        "Sekcja", ["Podglad", "Porownanie zbiorow", "Laczenie tabel", "Nazwy kolumn",
+        "Sekcja", ["Podglad", "Porównanie zbiorów", "Łączenie tabel", "Nazwy kolumn",
                    "Tabela przestawna", "SQL"],
         horizontal=True, key="sekcja_dane",
     )
 
     if sek == "Podglad":
         _sekcja_podglad(raw_df, all_num_cols)
-    elif sek == "Porownanie zbiorow":
+    elif sek == "Porównanie zbiorów":
         _sekcja_porownanie()
-    elif sek == "Laczenie tabel":
+    elif sek == "Łączenie tabel":
         _sekcja_laczenie()
     elif sek == "Nazwy kolumn":
         _sekcja_nazwy_kolumn(raw_df)

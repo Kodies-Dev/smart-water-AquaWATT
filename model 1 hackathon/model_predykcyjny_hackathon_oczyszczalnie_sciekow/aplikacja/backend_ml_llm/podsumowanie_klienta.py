@@ -74,39 +74,35 @@ def podsumuj(prog, opis=None, d=None):
 
 
 def tekst(s):
-    zd = [f"Dla pompowni **{s['obiekt']}** przewidujemy, że w okresie **{s['jutro_od']:%d.%m.%Y %H:%M} – "
-          f"{s['jutro_do']:%d.%m %H:%M}** zużyje ona około **{s['jutro_kwh']:.0f} kWh** energii. Najwięcej energii "
-          f"będzie potrzebne około godz. {s['szczyt_godz']} ({s['szczyt_kwh']:.1f} kWh w tej godzinie), najmniej około "
-          f"godz. {s['dolek_godz']} ({s['dolek_kwh']:.1f} kWh) – to typowy rytm ścieków z domów: mało w nocy, "
-          f"więcej rano i wieczorem."]
+    zd = [f"Prognozowane zużycie energii pompowni **{s['obiekt']}** w okresie **{s['jutro_od']:%d.%m.%Y %H:%M} – "
+          f"{s['jutro_do']:%d.%m %H:%M}** wynosi **{s['jutro_kwh']:.0f} kWh**. Szczyt przypada około godz. "
+          f"{s['szczyt_godz']} ({s['szczyt_kwh']:.1f} kWh), minimum około godz. {s['dolek_godz']} ({s['dolek_kwh']:.1f} kWh)."]
     if "wape" in s:
-        zd.append(f"Prognozę sprawdziliśmy na danych z pliku **{s['zrodlo']}** ({s['dni']} pełnych dób, "
-                  f"{s['od']:%d.%m.%Y} – {s['do']:%d.%m.%Y}): dla każdego dnia przewidzieliśmy zużycie tak, jakbyśmy robili "
-                  f"to dzień wcześniej, i porównaliśmy z tym, co pompownia zużyła naprawdę. **Średnio myliliśmy się o "
-                  f"{s['wape']:.1f}% dziennego zużycia, czyli o ok. {s['blad_kwh']:.0f} kWh na dobę** (przy średnim "
-                  f"zużyciu {s['sr_doba_kwh']:.0f} kWh/dobę). W {s['dni_ponizej_10']} z {s['dni']} dni błąd był mniejszy "
-                  f"niż 10%.")
+        zd.append(f"Ocena dokładności na danych z pliku **{s['zrodlo']}** ({s['dni']} pełnych dób, "
+                  f"{s['od']:%d.%m.%Y} – {s['do']:%d.%m.%Y}; prognoza dla każdej doby liczona z danych znanych dzień wcześniej): "
+                  f"**średni błąd dobowy {s['wape']:.1f}% (ok. {s['blad_kwh']:.0f} kWh na dobę** przy średnim zużyciu "
+                  f"{s['sr_doba_kwh']:.0f} kWh/dobę). Błąd poniżej 10% wystąpił w {s['dni_ponizej_10']} z {s['dni']} dób.")
         if "wczoraj" in s:
             if s["lepiej_niz_wczoraj"] > 2:
-                zd.append(f"Dla porównania prosta metoda „jutro będzie tak samo jak dziś” myliłaby się o "
-                          f"{s['wczoraj']:.1f}% – nasza prognoza jest od niej dokładniejsza o {s['lepiej_niz_wczoraj']:.0f}%.")
+                zd.append(f"Metoda referencyjna „jak wczoraj” daje błąd {s['wczoraj']:.1f}% – "
+                          f"model jest dokładniejszy o {s['lepiej_niz_wczoraj']:.0f}%.")
             else:
-                zd.append(f"W tym okresie prosta metoda „jutro będzie tak samo jak dziś” była podobnie dokładna "
-                          f"({s['wczoraj']:.1f}%) – to pompownia o bardzo równym zużyciu, gdzie przewaga prognozy jest mała.")
+                zd.append(f"Metoda referencyjna „jak wczoraj” daje porównywalny błąd ({s['wczoraj']:.1f}%) – "
+                          f"zużycie pompowni jest bardzo stabilne, więc przewaga modelu jest niewielka.")
         roz = s["naj_pr"] - s["naj_rz"]
-        naj = (f"Największa różnica była {s['naj_data']:%d.%m.%Y}: pompownia zużyła {s['naj_rz']:.0f} kWh, a prognoza "
-               f"mówiła {s['naj_pr']:.0f} kWh ({'za mało' if roz < 0 else 'za dużo'} o {abs(roz):.0f} kWh).")
+        naj = (f"Największe odchylenie wystąpiło {s['naj_data']:%d.%m.%Y}: zużycie rzeczywiste {s['naj_rz']:.0f} kWh, "
+               f"prognoza {s['naj_pr']:.0f} kWh ({'niedoszacowanie' if roz < 0 else 'przeszacowanie'} o {abs(roz):.0f} kWh).")
         if pd.notna(s.get("naj_opad")) and s["naj_opad"] >= 5:
-            naj += (f" Tego dnia spadło ok. {s['naj_opad']:.0f} mm deszczu – woda deszczowa trafia do kanalizacji "
-                    f"i pompy pracują dłużej, a takie ulewy trudno przewidzieć dzień wcześniej.")
+            naj += (f" Tego dnia odnotowano opad ok. {s['naj_opad']:.0f} mm – wody opadowe zwiększają dopływ do "
+                    f"kanalizacji, a intensywne opady są trudne do przewidzenia z wyprzedzeniem.")
         zd.append(naj)
         if s["bias"] < -3:
-            zd.append(f"W sumie prognoza była o {abs(s['bias']):.0f}% niższa od rzeczywistego zużycia – przy planowaniu "
-                      f"zakupu energii warto doliczyć mały zapas na dni deszczowe.")
+            zd.append(f"Prognoza była średnio o {abs(s['bias']):.0f}% niższa od zużycia rzeczywistego – "
+                      f"przy planowaniu zakupu energii zaleca się zapas na dni deszczowe.")
         if s["widziane"] > 0 and not s["uczciwie"]:
-            zd.append(f"⚠️ Model widział {s['widziane']:.0f}% godzin z tego okresu podczas nauki, więc rzeczywista "
-                      f"dokładność może być niższa. Dla uczciwego sprawdzenia włącz w ustawieniach zaawansowanych "
-                      f"„Ucz model bez okresu z pliku”.")
+            zd.append(f"**Uwaga:** {s['widziane']:.0f}% godzin z pliku znajdowało się w danych treningowych, więc rzeczywista "
+                      f"dokładność może być niższa. Aby ocenić model na danych nieznanych, włącz w ustawieniach zaawansowanych "
+                      f"opcję „Uczciwy backtest”.")
     return pl("\n\n".join(zd))
 
 

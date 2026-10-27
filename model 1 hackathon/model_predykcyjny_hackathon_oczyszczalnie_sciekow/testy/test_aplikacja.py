@@ -104,12 +104,14 @@ def test_zakladki_wody_przypadkowe_glownym_tematem(d, monkeypatch):
     etykiety = [t.label.strip() for t in at.tabs]
     assert etykiety == ["Dane", "Wykresy", "Wody przypadkowe", "Anomalie", "Anomalie – szczegoly", "Prognoza", "Prognoza – szczegoly",
                         "Model", "Raport", "Pytanie", "Dobre praktyki"]
-    assert any(m.label == "Najwięcej wód przypadkowych" for m in at.metric)            # zakładka wód przypadkowych policzona
-    assert len(at.session_state["wp_rank"]) == d["energia"]["obiekt_id"].nunique()
-    at.selectbox(key="wp_obiekt").set_value("RU_W").run()
+    assert any("Wgraj plik CSV" in i.value for i in at.info)                           # bez pliku: wskazówka
+    at.file_uploader(key="pp_pliki").set_value([("RU_W_test.csv", _plik_csv(d, "RU_W", 26), "text/csv")]).run()
+    [b for b in at.button if b.label == "Wczytaj pliki"][0].click().run()
     assert not at.exception, [x.value for x in at.exception]
+    assert any(m.label == "Infiltracja" for m in at.metric)                             # zakładka liczona dla pompowni z pliku
+    assert list(at.session_state["wp_rank"]["obiekt"]) == ["RU_W"]
     assert any("Infiltracja" in m.value for m in at.markdown)
-    assert any(b.label.startswith("Zdarzenia – wszystkie pompownie (Excel)") for b in at.get("download_button"))
+    assert any(b.label == "Zdarzenia (Excel)" for b in at.get("download_button"))
     at.selectbox(key="wp_zd_wybor").set_value(1).run()                                  # wykres godzinowy zdarzenia
     assert not at.exception, [x.value for x in at.exception]
     at.number_input(key="wp_cena").set_value(0.8).run()                                 # inna cena energii
@@ -209,8 +211,9 @@ def test_anomalie_widok_klienta_i_szczegoly(d, monkeypatch):
     at.session_state["aktywny"] = "x"
     at.run()
     assert any("Najpierw kliknij **Wykryj anomalie**" in i.value for i in at.info)          # szczegóły bez wyniku: wskazówka
-    # 1. cała historia pompowni z bazy
-    at.selectbox(key="an_obiekt").set_value("RU_W").run()
+    # 1. plik z panelu: pompownia z przepływomierzem
+    at.file_uploader(key="pp_pliki").set_value([("RU_W_test.csv", _plik_csv(d, "RU_W", 26), "text/csv")]).run()
+    [b for b in at.button if b.label == "Wczytaj pliki"][0].click().run()
     [b for b in at.button if b.label == "Wykryj anomalie"][0].click().run()
     assert not at.exception, [e.value for e in at.exception]
     w = at.session_state["an_wynik"]
@@ -221,10 +224,9 @@ def test_anomalie_widok_klienta_i_szczegoly(d, monkeypatch):
     at.selectbox(key="an_wybor").set_value(1).run()
     assert not at.exception, [e.value for e in at.exception]
     assert any(m.label == "Zgoda ≥ 2 z 3 (wynik)" for m in at.metric)                        # zakładka szczegółów
-    # 2. plik z panelu
+    # 2. inny plik z panelu
     at.file_uploader(key="pp_pliki").set_value([("RY_PZ1_test.csv", _plik_csv(d, "RY_PZ1", 8), "text/csv")]).run()
     [b for b in at.button if b.label == "Wczytaj pliki"][0].click().run()
-    at.radio(key="an_zrodlo").set_value("Dane z panelu (okres z pliku)").run()
     [b for b in at.button if b.label == "Wykryj anomalie"][0].click().run()
     assert not at.exception, [e.value for e in at.exception]
     w = at.session_state["an_wynik"]

@@ -1,5 +1,5 @@
 """
-Zakladka Wykresy - eksploracja surowych danych przed detekcja anomalii.
+Zakładka Wykresy - eksploracja surowych danych przed detekcja anomalii.
 Wykres liniowy, histogram, boxplot, korelacje.
 """
 
@@ -19,22 +19,22 @@ def renderuj():
 
     if not all_num_cols:
         # zbior moze byc tekstowy - np. slownik wgrany tylko po to, zeby go z czyms polaczyc
-        st.warning(f"Zbior '{st.session_state.aktywny}' nie ma kolumn liczbowych, wiec nie ma czego "
-                   "pokazac na wykresach. Wybierz inny zbior w panelu bocznym albo polacz "
-                   "go z innym w zakladce Dane.")
+        st.warning(f"Zbiór '{st.session_state.aktywny}' nie ma kolumn liczbowych, więc nie ma czego "
+                   "pokazać na wykresach. Wybierz inny zbiór w panelu bocznym albo połącz "
+                   "go z innym w zakładce Dane.")
         return
 
     c1, c2, c3 = st.columns(3)
     with c1:
         row_from = Pola.num_field("Wiersz od", 0, len(raw_df) - 1, 0, 1, "row_from",
-                                  help="Ogranicz zakres, zeby przyjrzec sie fragmentowi duzego pliku.")
+                                  help="Ogranicz zakres, żeby przyjrzeć się fragmentowi dużego pliku.")
     with c2:
         row_to = Pola.num_field("Wiersz do", 1, len(raw_df), min(len(raw_df), 1000), 1, "row_to")
     with c3:
-        bins = Pola.num_field("Liczba przedzialow (histogram)", 5, 200, 40, 1, "bins")
+        bins = Pola.num_field("Liczba przedziałów (histogram)", 5, 200, 40, 1, "bins")
 
     if row_to <= row_from:  # zabezpieczenie przed odwroconym zakresem
-        st.caption(f"Koniec zakresu musi byc wiekszy od poczatku - uzyto {row_from + 1}.")
+        st.caption(f"Koniec zakresu musi być większy od początku - użyto {row_from + 1}.")
         row_to = row_from + 1
 
     view = raw_df.iloc[row_from:row_to]
@@ -46,11 +46,11 @@ def renderuj():
         lim_line = Pola.axis_fields("line")
         plot_view, step = Narzedzia.downsample(view)
         if step > 1:
-            st.caption(f"Bardzo duzo wartosci - wykres pokazuje co {step}. wiersz.")
-        Wykresy.show(Wykresy.fig_line(plot_view, line_cols, "Przebieg wartosci", lim_line))
-        st.caption("Najedz na punkt, zeby zobaczyc wartosc. Kolko myszy przybliza, przeciaganie przesuwa.")
+            st.caption(f"Bardzo dużo wartości - wykres pokazuje co {step}. wiersz.")
+        Wykresy.show(Wykresy.fig_line(plot_view, line_cols, "Przebieg wartości", lim_line))
+        st.caption("Najedź na punkt, żeby zobaczyć wartość. Kółko myszy przybliża, przeciąganie przesuwa.")
     else:
-        st.info("Wybierz przynajmniej jedna kolumne.")
+        st.info("Wybierz przynajmniej jedna kolumnę.")
 
     st.markdown("#### Histogram")
     hist_col = st.selectbox("Kolumna", all_num_cols, key="hist_col")
