@@ -83,6 +83,17 @@ CREATE TABLE IF NOT EXISTS prognoza_pogody_godz (   -- Open-Meteo Previous Runs:
     PRIMARY KEY (stacja, czas)
 );
 
+CREATE TABLE IF NOT EXISTS prognoza_pogody_dni (    -- prognozy wydane 1..7 dni wcześniej (Previous Runs, previous_dayN)
+    stacja     TEXT,
+    czas       TIMESTAMPTZ,
+    dni        SMALLINT,          -- wyprzedzenie: z ilu dni wcześniej pochodzi prognoza dla tej godziny
+    opad_mm    DOUBLE PRECISION,
+    deszcz_mm  DOUBLE PRECISION,
+    snieg_cm   DOUBLE PRECISION,
+    temp_c     DOUBLE PRECISION,
+    PRIMARY KEY (stacja, czas, dni)
+);
+
 CREATE TABLE IF NOT EXISTS kalendarz (
     data               DATE PRIMARY KEY,      -- data lokalna
     dzien_tyg          SMALLINT,              -- 0 = poniedziałek

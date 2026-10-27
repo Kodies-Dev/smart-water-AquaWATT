@@ -26,7 +26,7 @@ sys.path.insert(1, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from frontend_streamlit.magazyn_danych import MagazynDanych
 from frontend_streamlit.styles import Wyglad
 from frontend_streamlit import panel_prognozy          # panel_boczny.py z GUS zostaje, ten jest pod predykcje
-from frontend_streamlit import zakladka_dane_prognozy
+from frontend_streamlit import zakladka_dane
 from frontend_streamlit import zakladka_wykresy
 from frontend_streamlit import zakladka_twoja_prognoza
 from frontend_streamlit import zakladka_prognoza_szczegoly
@@ -51,9 +51,8 @@ if not st.session_state.get("baza_proba"):
         from backend_ml_llm.nasz_detektor import nasz_detektor
         with st.spinner("Wczytuje dane z bazy..."):
             st.session_state.d_baza, st.session_state.alarmy = nasz_detektor.dane_z_bazy()
-        MagazynDanych.dodaj("baza_dobowo", nasz_detektor.dobowo_do_podgladu(st.session_state.d_baza))
     except Exception:
-        pass                                         # bez bazy: komunikat ponizej, mozna wgrac plik w panelu
+        pass                                         # bez bazy: komunikat ponizej
 
 panel_prognozy.renderuj()
 
@@ -62,12 +61,15 @@ panel_prognozy.renderuj()
 
 st.title("Prognoza zuzycia energii pompowni sciekow")
 
+if st.session_state.get("d_baza") is None:
+    st.warning("Brak polaczenia z baza danych (historia, pogoda, kalendarz potrzebne do prognozy) - uruchom baze "
+               "(docker compose up -d db) i odswiez strone.")
 if not st.session_state.zbiory:
-    st.info("Brak danych z bazy (po ETL) - uruchom baze (docker compose up -d db) i odswiez strone.")
+    st.info("Wgraj plik w panelu po lewej, zeby zaczac. Mozna wgrac kilka naraz.")
     st.stop()  # zatrzymuje dalsze wykonanie skryptu
 
 # kolejnosc: dane (wczytane w panelu) -> ich wykresy -> prognoza -> szczegoly prognozy -> model -> raport, pytanie, praktyki
-zakladki = [(" Dane", zakladka_dane_prognozy), (" Wykresy", zakladka_wykresy), (" Prognoza", zakladka_twoja_prognoza),
+zakladki = [(" Dane", zakladka_dane), (" Wykresy", zakladka_wykresy), (" Prognoza", zakladka_twoja_prognoza),
             (" Prognoza – szczegoly", zakladka_prognoza_szczegoly), (" Model", zakladka_model),
             (" Raport", zakladka_raport_prognozy), (" Pytanie", zakladka_pytanie_prognozy),
             (" Dobre praktyki", zakladka_jak_czytac)]

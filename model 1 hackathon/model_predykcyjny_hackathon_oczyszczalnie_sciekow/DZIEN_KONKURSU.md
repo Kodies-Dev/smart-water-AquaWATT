@@ -56,8 +56,8 @@ docker compose up -d db
 ## Pokaz w aplikacji (kolejność)
 
 1. `python main.py aplikacja` → http://localhost:8501 (baza wczytuje się sama)
-2. **Panel po lewej** → wgraj plik z danymi finalnymi → wybierz pompownię
-3. **Dane** → okres, suma, średnio na dobę, wykres · **Wykresy** → histogram, boxplot
+2. **Panel po lewej** → Wgraj pliki → **Wczytaj pliki** → sprawdź „Której pompowni dotyczą dane do prognozy?”
+3. **Dane** → podgląd, statystyki (jak w Detektorze GUS) · **Wykresy** → przebieg, histogram, boxplot
 4. **Prognoza** → **Przygotuj prognozę** → kafelki, opis prostym językiem, wykres jutra, „jak trafiały prognozy”, **Excel**
 5. **Prognoza – szczegóły** → zużycie na tle deszczu i temperatury, jutro z prognozą pogody, porównanie z prostymi metodami
 6. **Model** → jak dobry jest model ogólnie (vs proste reguły, per pompownia, doby suche/mokre)
@@ -86,3 +86,15 @@ docker compose up -d db
 | „Za mało danych” | plik + historia z bazy < 5 tygodni → podaj `--obiekt` z bazy albo dłuższy plik |
 | Ollama niedostępna | raport powstaje jako same fakty; reszta działa |
 | brak internetu | ETL bierze pogodę z `cache\`; prognoza: `--bez-pogody-biezacej` |
+
+Jak przygotować prezentację (slajdy, zrzuty, demo, pytania jury): **`PREZENTACJA.md`**.
+
+## Przed konkursem: nowe modele (prognoza na tydzień i plan na 2 miesiące)
+
+```powershell
+python main.py etl                              # nowa tabela: prognozy pogody wydane 1–7 dni wcześniej
+python main.py strojenie                        # opcjonalnie, ~15–20 min
+python main.py prognoza --trenuj --dni 7        # modele 1–7 dni + plan 2 miesiące, ~10–15 min
+python main.py horyzont ; python main.py horyzont --dlugi   # liczby na slajd „błąd vs dni naprzód”
+```
+W aplikacji: **Prognoza → Na ile do przodu: Jutro / Tydzień / 2 miesiące**.

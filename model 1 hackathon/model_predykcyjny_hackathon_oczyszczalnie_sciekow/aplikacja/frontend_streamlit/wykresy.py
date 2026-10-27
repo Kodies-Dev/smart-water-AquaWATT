@@ -415,3 +415,34 @@ class Wykresy:
         fig.update_yaxes(title_text="kWh / doba", row=1, col=1)
         fig.update_yaxes(title_text="blad [%]", row=2, col=1)
         return fig
+
+
+    # ---------------------------------------------------------------- horyzont: tydzien i plan 2 miesiace
+
+    KOLORY_DNI = ["#1F4E79", "#2E75B6", "#5B9BD5", "#9DC3E6", "#F4B183", "#ED7D31", "#C55A11"]
+
+    @staticmethod
+    def fig_tydzien(tydzien, limits=None):
+        """Prognoza godzinowa na kolejne dni; kolor = ile dni naprzod (im dalej, tym mniej pewna)."""
+        fig = go.Figure()
+        for k, g in tydzien.groupby("dzien_naprzod"):
+            fig.add_trace(go.Scatter(x=g["czas_lokalny"], y=g["prognoza"], mode="lines", name=f"dzień +{k}",
+                                     line=dict(color=Wykresy.KOLORY_DNI[(k - 1) % 7], width=1.8),
+                                     hovertemplate=f"dzień +{k}<br>%{{x|%d.%m %H:%M}}<br>%{{y:.1f}} kWh<extra></extra>"))
+        return Wykresy.style_fig(fig, "Prognoza godzina po godzinie na kolejne dni (kolor = ile dni naprzód)", None,
+                                 "kWh / godzinę", limits, height=420)
+
+    @staticmethod
+    def fig_plan(dz, limits=None):
+        """Plan dobowy na 2 miesiace: P50 i przedzial P10–P90 (80% dni miesci sie w pasie)."""
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=dz["dzien"], y=dz["p90"], mode="lines", line=dict(width=0), showlegend=False,
+                                 hoverinfo="skip"))
+        fig.add_trace(go.Scatter(x=dz["dzien"], y=dz["p10"], mode="lines", line=dict(width=0), fill="tonexty",
+                                 fillcolor="rgba(46,117,182,0.18)", name="przedział P10–P90",
+                                 hovertemplate="%{x|%d.%m}<br>P10 %{y:.0f} kWh<extra></extra>"))
+        fig.add_trace(go.Scatter(x=dz["dzien"], y=dz["p50"], mode="lines+markers", name="najbardziej prawdopodobne (P50)",
+                                 line=dict(color=COL_ANOM, width=2), marker=dict(size=4),
+                                 hovertemplate="%{x|%d.%m.%Y}<br>%{y:.0f} kWh<extra></extra>"))
+        return Wykresy.style_fig(fig, "Plan na 2 miesiące – zużycie dobowe (pas: 80% dni mieści się w przedziale)", None,
+                                 "kWh / doba", limits, height=420)

@@ -18,7 +18,8 @@ def _siatka(df, idx, kol):
     return s.reindex(idx)
 
 
-def _dla_obiektu(oid, d, obiekt, okno=672):
+def _dla_obiektu(oid, d, obiekt, okno=672, h=H):
+    """h - wyprzedzenie prognozy [h]: kazda cecha z historii jest przesunieta o co najmniej h (24 = jutro, 168 = 7 dni)."""
     en = d["energia"][d["energia"]["obiekt_id"] == oid]
     idx = pd.date_range(en["czas"].min(), en["czas"].max(), freq="h", name="czas")
     y = _siatka(en, idx, "kwh")
@@ -37,21 +38,22 @@ def _dla_obiektu(oid, d, obiekt, okno=672):
         f[c] = pd.Series(lok.date, index=idx).map(kal[c].map({True: 1.0, False: 0.0}))
 
     # --- historia energii (znana z opóźnieniem H); normalizacja przez poziom obiektu z ostatnich 28 dni
-    poziom = y.rolling(okno, min_periods=okno // 2).median().shift(H)     # okno: 672 h = 28 dni, 168 h = 7 dni
+    poziom = y.rolling(okno, min_periods=okno // 2).median().shift(h)     # okno: 672 h = 28 dni, 168 h = 7 dni
     f["poziom"] = poziom
-    f["poziom_zmiana"] = (y.rolling(168, min_periods=84).median() / y.rolling(672, min_periods=336).median()).shift(H)
-    for l in sorted({H, H + 24, 168, 336}):
+    f["poziom_zmiana"] = (y.rolling(168, min_periods=84).median() / y.rolling(672, min_periods=336).median()).shift(h)
+    for l in sorted({h, h + 24} | {x for x in (168, 336) if x >= h}):      # tylko lagi znane h godzin wczesniej
         f[f"kwh_l{l}"] = y.shift(l) / poziom
-    f["kwh_sr24"] = y.rolling(24, min_periods=18).mean().shift(H) / poziom
-    f["kwh_sr168"] = y.rolling(168, min_periods=120).mean().shift(H) / poziom
-    f["kwh_max24"] = y.rolling(24, min_periods=18).max().shift(H) / poziom
+    f["kwh_sr24"] = y.rolling(24, min_periods=18).mean().shift(h) / poziom
+    f["kwh_sr168"] = y.rolling(168, min_periods=120).mean().shift(h) / poziom
+    f["kwh_max24"] = y.rolling(24, min_periods=18).max().shift(h) / poziom
     f["y"] = y / poziom
     f["y_log"] = np.log1p(y / poziom)          # cel modelu (patrz config.py)
 
     # --- baseline'y (w kWh)
     f["b_naiwny_doba"] = y.shift(24)
     f["b_naiwny_tydzien"] = y.shift(168)
-    f["b_profil_4tyg"] = pd.concat([y.shift(168 * k) for k in range(1, 5)], axis=1).median(axis=1)
+    k0 = -(-h // 168)                                                   # profil z tygodni znanych w chwili prognozy
+    f["b_profil_4tyg"] = pd.concat([y.shift(168 * k) for k in range(k0, k0 + 4)], axis=1).median(axis=1)
     f["profil_4tyg"] = f["b_profil_4tyg"] / poziom     # silna baza jako cecha – XGBoost uczy się korekty
 
     # --- opad: w Rudzie deszczomierz, gdzie indziej Open-Meteo dla punktu obiektu
@@ -62,7 +64,7 @@ def _dla_obiektu(oid, d, obiekt, okno=672):
         s = opad.rolling(okno, min_periods=1).sum()
         f[f"opad_rz_{okno}h"] = s
         if okno >= 24:
-            f[f"opad_pr_{okno}h"] = s.shift(H)
+            f[f"opad_pr_{okno}h"] = s.shift(h)
 
     # --- prognoza pogody wydana ~24 h wcześniej (Open-Meteo Previous Runs) – znana w chwili prognozy.
     #     Okna do 24 h kończą się w godzinie prognozy, więc w całości leżą w horyzoncie prognozy.
@@ -86,15 +88,15 @@ def _dla_obiektu(oid, d, obiekt, okno=672):
         "wilg728_rz": _siatka(p, idx, "wilg_gleby_7_28"),
         "et0_168_rz": _siatka(p, idx, "et0_mm").rolling(168, min_periods=24).sum(),
     }, index=idx)
-    f = f.join(rz).join(rz.shift(H).rename(columns=lambda c: c.replace("_rz", "_pr")))
+    f = f.join(rz).join(rz.shift(h).rename(columns=lambda c: c.replace("_rz", "_pr")))
 
     # --- dane operacyjne (tylko gdzie są: przepływ, praca pomp) – znane z opóźnieniem H
     m3 = _siatka(d["przeplyw"][d["przeplyw"]["obiekt_id"] == oid], idx, "m3")
     praca = _siatka(d["scada"][d["scada"]["obiekt_id"] == oid], idx, "praca_pomp_h")
-    m3_poziom = m3.rolling(672, min_periods=336).median().shift(H)
-    f["m3_sr24_pr"] = m3.rolling(24, min_periods=18).mean().shift(H) / m3_poziom
-    f["praca24_pr"] = praca.rolling(24, min_periods=18).sum().shift(H)
-    f["kwh_na_m3_pr"] = (y.rolling(168, min_periods=120).sum() / m3.rolling(168, min_periods=120).sum()).shift(H)
+    m3_poziom = m3.rolling(672, min_periods=336).median().shift(h)
+    f["m3_sr24_pr"] = m3.rolling(24, min_periods=18).mean().shift(h) / m3_poziom
+    f["praca24_pr"] = praca.rolling(24, min_periods=18).sum().shift(h)
+    f["kwh_na_m3_pr"] = (y.rolling(168, min_periods=120).sum() / m3.rolling(168, min_periods=120).sum()).shift(h)
 
     # --- parametry obiektu ze schematu / szacunków
     for c in ["moc_pompy_kw", "wydajnosc_m3h", "zbiornik_m3"]:
@@ -102,10 +104,11 @@ def _dla_obiektu(oid, d, obiekt, okno=672):
     return f
 
 
-def zbuduj(d, okno=672):
-    """okno – okno mediany do normalizacji poziomu [h]: 672 (28 dni, domyślnie) albo krótsze, np. 168 (7 dni)."""
+def zbuduj(d, okno=672, h=H):
+    """okno – okno mediany do normalizacji poziomu [h]: 672 (28 dni, domyślnie) albo krótsze, np. 168 (7 dni).
+    h – wyprzedzenie prognozy [h]: 24 = następna doba (domyślnie), 24*K = K dni naprzód."""
     obiekty = d["obiekty"].set_index("obiekt_id")
-    czesci = [_dla_obiektu(oid, d, obiekty.loc[oid], okno) for oid in sorted(d["energia"]["obiekt_id"].unique())]
+    czesci = [_dla_obiektu(oid, d, obiekty.loc[oid], okno, h) for oid in sorted(d["energia"]["obiekt_id"].unique())]
     f = pd.concat(czesci).reset_index()
     for oid in sorted(f["obiekt_id"].unique()):
         f[f"ob_{oid}"] = (f["obiekt_id"] == oid).astype(float)

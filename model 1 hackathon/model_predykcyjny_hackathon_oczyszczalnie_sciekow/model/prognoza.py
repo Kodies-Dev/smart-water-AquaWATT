@@ -46,38 +46,65 @@ def _gotowe_wiersze(f):
     return f[f["y_log"].notna() & f["poziom"].notna() & f["b_profil_4tyg"].notna()].copy()
 
 
-def trenuj(d, zapisz=True):
-    """1) early stopping na ostatnich 10% czasu każdego obiektu -> liczba drzew, 2) trening na WSZYSTKICH danych."""
-    f = _gotowe_wiersze(zbuduj(d))
+def plik_modelu(dni=1):
+    return f"{WARIANT}" + (f"_d{dni}" if dni > 1 else "")
+
+
+def dla_dni(d, dni):
+    """Dane z prognoza pogody wydana `dni` dni wczesniej (dla dni=1 bez zmian – tabela prognoza_pogody_godz)."""
+    if dni == 1:
+        return d
+    pd_ = d.get("prognoza_dni")
+    if pd_ is None or pd_.empty:
+        return dict(d, prognoza=pd.DataFrame(columns=["stacja", "czas", "opad_mm", "deszcz_mm", "snieg_cm", "temp_c"]))
+    return dict(d, prognoza=pd_[pd_["dni"] == dni].drop(columns="dni"))
+
+
+def trenuj(d, zapisz=True, dni=1):
+    """Model na `dni` dni naprzód (1 = jutro). 1) early stopping na ostatnich 10% czasu każdego obiektu -> liczba drzew,
+    2) trening na WSZYSTKICH danych. Cechy przesunięte o 24·dni h, prognoza pogody wydana `dni` dni wcześniej."""
+    h = 24 * dni
+    f = _gotowe_wiersze(zbuduj(dla_dni(d, dni), h=h))
     X = kolumny_grup(GRUPY_MODELU)
     granica = f.groupby("obiekt_id")["czas"].transform(lambda t: t.quantile(1 - WALIDACJA))
     tr, wal = f[f["czas"] < granica], f[f["czas"] >= granica]
-    m = xgb.XGBRegressor(**XGB).fit(tr[X], tr["y_log"], eval_set=[(wal[X], wal["y_log"])], verbose=False)
+    from .strojenie import parametry_modelu
+    params, zrodlo_parametrow = parametry_modelu(MODELE)          # dostrojone (Optuna), jeśli wygrały na teście
+    m = xgb.XGBRegressor(**params, n_estimators=3000, early_stopping_rounds=200) \
+        .fit(tr[X], tr["y_log"], eval_set=[(wal[X], wal["y_log"])], verbose=False)
     drzew = m.best_iteration + 1
     pw = np.expm1(np.clip(m.predict(wal[X]), 0, None)) * wal["poziom"].values
     wape_wal = _wape_doba(wal.assign(prognoza=pw))
 
-    parametry = {k: v for k, v in XGB.items() if k != "early_stopping_rounds"} | {"n_estimators": drzew}
-    model = xgb.XGBRegressor(**parametry).fit(f[X], f["y_log"], verbose=False)
-    meta = dict(wariant=WARIANT, grupy=GRUPY_MODELU, kolumny=X, horyzont_h=H, drzew=drzew,
+    model = xgb.XGBRegressor(**params, n_estimators=drzew).fit(f[X], f["y_log"], verbose=False)
+    meta = dict(wariant=WARIANT, grupy=GRUPY_MODELU, kolumny=X, horyzont_h=h, dni=dni, drzew=drzew, parametry=zrodlo_parametrow,
                 wape_doba_walidacja=round(wape_wal, 2), obiekty=sorted(f["obiekt_id"].unique()),
                 dane_od=str(f["czas"].min()), dane_do=str(f["czas"].max()), godzin=int(len(f)),
                 zakres={o: [str(g.min()), str(g.max())] for o, g in f.groupby("obiekt_id")["czas"]},
                 wytrenowano=datetime.now().isoformat(timespec="seconds"))
     if zapisz:
         MODELE.mkdir(parents=True, exist_ok=True)
-        model.save_model(MODELE / f"{WARIANT}.json")
-        (MODELE / f"{WARIANT}_meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+        model.save_model(MODELE / f"{plik_modelu(dni)}.json")
+        (MODELE / f"{plik_modelu(dni)}_meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
     return model, meta
 
 
-def wczytaj_model():
-    p = MODELE / f"{WARIANT}.json"
+def wczytaj_model(dni=1):
+    p = MODELE / f"{plik_modelu(dni)}.json"
     if not p.exists():
-        raise FileNotFoundError(f"Brak wytrenowanego modelu w {MODELE}. Uruchom: python main.py prognoza --trenuj")
+        polecenie = "python main.py prognoza --trenuj" + (f" --dni {dni}" if dni > 1 else "")
+        raise FileNotFoundError(f"Brak wytrenowanego modelu na {dni} dni naprzód w {MODELE}. Uruchom: {polecenie}")
     m = xgb.XGBRegressor()
     m.load_model(p)
-    return m, json.loads((MODELE / f"{WARIANT}_meta.json").read_text(encoding="utf-8"))
+    return m, json.loads((MODELE / f"{plik_modelu(dni)}_meta.json").read_text(encoding="utf-8"))
+
+
+def dostepne_dni():
+    """Ile dni naprzód mamy wytrenowanych modeli (1..7), kolejno bez przerw."""
+    n = 0
+    while (MODELE / f"{plik_modelu(n + 1)}.json").exists() and n < 7:
+        n += 1
+    return n
 
 
 # ============================================================ wczytanie pliku
@@ -110,6 +137,8 @@ def _kodowanie(sciezka, kodowanie=None):
 def wczytaj_plik(sciezka, koniec_godziny=False, sep=None, kodowanie=None):
     """CSV -> (DataFrame obiekt_id?, czas UTC, kwh, rodzaj formatu). obiekt_id tylko gdy jest w pliku.
     sep / kodowanie: None = rozpoznanie automatyczne; podane - maja pierwszenstwo."""
+    if str(sciezka).lower().endswith((".xlsx", ".xls", ".xlsm")):
+        return wczytaj_excel(sciezka, koniec_godziny)
     rodzaj = _rodzaj_pliku(sciezka, sep)
     if rodzaj == "raport":
         from etl.ry import wczytaj_raport
@@ -131,6 +160,54 @@ def wczytaj_plik(sciezka, koniec_godziny=False, sep=None, kodowanie=None):
         return pd.DataFrame({"czas": s.index, "kwh": s.values}), rodzaj
     df = pd.read_csv(sciezka, sep=sep, engine="python", encoding=_kodowanie(sciezka, kodowanie), encoding_errors="replace")
     return z_ramki(df, koniec_godziny), rodzaj
+
+
+NAZWY_CZAS = ("czas", "data_czas", "data i godzina", "data_godzina", "datetime", "timestamp", "time", "date_time")
+NAZWY_KWH = ("kwh", "energia_kwh", "zuzycie_kwh", "zużycie_kwh", "energia", "zuzycie", "zużycie", "energia [kwh]",
+             "zużycie [kwh]", "wartosc_kwh", "kwh_h")
+
+
+def _licznik_z_ramki(df):
+    """Odczyty licznika (data, godzina, wartosc [, status]) -> kWh na godzinę (jak w ETL)."""
+    if "status" in df:
+        ok = df["status"].astype(str).str.strip().str.match(r"^Warto.{1,4} z pomiaru$")
+        df = df[ok] if ok.any() else df
+    czas = pd.to_datetime(df["data"].astype(str).str[:10] + " " + df["godzina"].astype(str), errors="coerce")
+    df = df.assign(czas=czas).dropna(subset=["czas"]).drop_duplicates(["czas"])
+    s = licznik_na_godziny(lokalny_na_utc(df["czas"]), pd.to_numeric(df["wartosc"], errors="coerce"))
+    return pd.DataFrame({"czas": s.index, "kwh": s.values})
+
+
+def wczytaj_excel(sciezka, koniec_godziny=False, wiersz_naglowka=1):
+    """Excel (pierwszy arkusz) z zużyciem energii: kolumny czas + kWh (różne nazwy, także osobno data i godzina)
+    albo odczyty licznika data, godzina, [typ,] wartosc[, status] - z nagłówkiem lub bez."""
+    surowe = pd.read_excel(sciezka, sheet_name=0, header=None)
+    h = int(wiersz_naglowka) - 1
+    pierwszy = surowe.iloc[h:h + 1].astype(str).values.ravel().tolist() if len(surowe) > h else []
+    bez_naglowka = bool(pierwszy) and pd.notna(pd.to_datetime(pierwszy[0], errors="coerce"))
+    if bez_naglowka:
+        df = surowe.iloc[h:].reset_index(drop=True)
+        if df.shape[1] >= 4:                                               # jak mock_*: data, godzina, typ, wartosc, status
+            df.columns = ["data", "godzina", "typ", "wartosc", "status"][:df.shape[1]] + [f"k{i}" for i in range(df.shape[1] - 5)]
+            return _licznik_z_ramki(df), "excel (licznik)"
+        df.columns = ["czas", "kwh"][:df.shape[1]]
+        return z_ramki(df, koniec_godziny), "excel (czas;kwh)"
+    df = pd.read_excel(sciezka, sheet_name=0, header=h)
+    df.columns = [str(c).strip().lower() for c in df.columns]
+    kol = {c.replace("ł", "l") for c in df.columns}
+    if {"data", "godzina", "wartosc"} <= kol or {"data", "godzina", "wartość"} <= set(df.columns):
+        df = df.rename(columns={"wartość": "wartosc"})
+        if "kwh" not in df:
+            return _licznik_z_ramki(df), "excel (licznik)"
+    czas = next((c for c in df.columns if c in NAZWY_CZAS), None)
+    kwh = next((c for c in df.columns if c in NAZWY_KWH), None) or next((c for c in df.columns if "kwh" in c), None)
+    if czas is None and {"data", "godzina"} <= set(df.columns):
+        df["czas"] = df["data"].astype(str).str[:10] + " " + df["godzina"].astype(str)
+        czas = "czas"
+    if czas is None or kwh is None:
+        raise ValueError("W arkuszu nie znaleziono kolumn czasu i zużycia (np. 'czas' i 'kwh') ani odczytów licznika "
+                         "(data, godzina, wartosc).")
+    return z_ramki(df.rename(columns={czas: "czas", kwh: "kwh"})[["czas", "kwh"]], koniec_godziny), "excel (czas;kwh)"
 
 
 def wczytaj_pliki(sciezki, koniec_godziny=False, sep=None, kodowanie=None):
@@ -200,7 +277,7 @@ def _uzupelnij(baza, nowe):
 
 # ============================================================ prognoza
 
-def dane_do_prognozy(d, oid, nowe=None, stacja=None, pobierz_pogode=True):
+def dane_do_prognozy(d, oid, nowe=None, stacja=None, pobierz_pogode=True, godzin=H):
     """Słownik tabel dla jednego obiektu: historia z bazy + nowe dane z pliku + 24 h „przyszłości” do prognozy."""
     e = d["energia"][d["energia"]["obiekt_id"] == oid][["obiekt_id", "czas", "kwh"]]
     if nowe is not None and len(nowe):
@@ -211,7 +288,7 @@ def dane_do_prognozy(d, oid, nowe=None, stacja=None, pobierz_pogode=True):
         raise ValueError(f"Za mało danych dla {oid}: {e['kwh'].notna().sum()} h, potrzeba co najmniej {MIN_HISTORII_H} h "
                          f"(~5 tygodni). Dołącz dłuższy plik albo obiekt z bazy.")
     ostatnia = e.loc[e["kwh"].notna(), "czas"].max()
-    przyszlosc = pd.date_range(ostatnia + pd.Timedelta(hours=1), periods=H, freq="h")
+    przyszlosc = pd.date_range(ostatnia + pd.Timedelta(hours=1), periods=godzin, freq="h")
     e = pd.concat([e, pd.DataFrame({"obiekt_id": oid, "czas": przyszlosc, "kwh": np.nan})], ignore_index=True)
 
     ob = d["obiekty"].set_index("obiekt_id")
@@ -221,18 +298,22 @@ def dane_do_prognozy(d, oid, nowe=None, stacja=None, pobierz_pogode=True):
                                     for c in ["moc_pompy_kw", "wydajnosc_m3h", "zbiornik_m3"]})])
     pogoda, prognoza = d["pogoda"], d.get("prognoza", pd.DataFrame(columns=["stacja", "czas"]))
     if pobierz_pogode:
-        pb, prb = pogoda_biezaca(stacja)
+        pb, prb = pogoda_biezaca(stacja, dni_naprzod=min(16, max(3, -(-godzin // 24) + 1)))
         pogoda, prognoza = _uzupelnij(pogoda, pb), _uzupelnij(prognoza, prb)
+    else:
+        prb = pd.DataFrame()
     puste = lambda kol: pd.DataFrame(columns=kol)
     return dict(energia=e, przeplyw=puste(["obiekt_id", "czas", "m3"]), scada=puste(["obiekt_id", "czas", "praca_pomp_h"]),
                 opad_ru=d["opad_ru"] if oid.startswith("RU") else puste(["czas", "mm"]),
                 pogoda=pogoda[pogoda["stacja"] == stacja], prognoza=prognoza[prognoza["stacja"] == stacja],
-                kalendarz=d["kalendarz"], obiekty=obiekty), przyszlosc
+                kalendarz=d["kalendarz"], obiekty=obiekty,
+                prognoza_dni=(d["prognoza_dni"][d["prognoza_dni"]["stacja"] == stacja] if "prognoza_dni" in d else None),
+                prognoza_biezaca=prb), przyszlosc
 
 
 def prognozuj(model, meta, dd, oid):
     """Prognoza kWh dla każdej godziny z wystarczającą historią (każda „dobę wcześniej”) + 24 h przyszłości."""
-    f = zbuduj(dd)
+    f = zbuduj(dd, h=meta.get("horyzont_h", H))
     f = f[(f["obiekt_id"] == oid) & f["poziom"].notna()].copy()
     X = f.reindex(columns=meta["kolumny"])
     ob = [c for c in meta["kolumny"] if c.startswith("ob_")]
@@ -332,6 +413,36 @@ def uruchom(oid, nowe=None, d=None, stacja=None, pobierz_pogode=True, katalog=No
     return wynik, met, mies, jutro
 
 
+def uruchom_dni(oid, nowe=None, d=None, stacja=None, pobierz_pogode=True, katalog=None, uczciwie=False, dni=7):
+    """Prognoza na `dni` dni naprzód (1–7): dzień 1 jak w uruchom() (z uczciwym sprawdzeniem), dni 2..N – modele na
+    K dni naprzód (godzina w dniu K prognozowana modelem K, z prognozą pogody wydaną K dni wcześniej).
+    Zwraca (wynik_1, metryki_1, sumy_mies, jutro, prognoza_N_dni, blad_wg_dni)."""
+    if d is None:
+        from .dane import wczytaj
+        d = wczytaj()
+    wynik, met, mies, jutro = uruchom(oid, nowe, d, stacja, pobierz_pogode, katalog, uczciwie)
+    dni = min(dni, dostepne_dni())
+    jutro = jutro.assign(dzien_naprzod=1)
+    czesci, bledy = [jutro], {1: met.get("WAPE_doba") if met else None}
+    if dni > 1:
+        dd, przyszlosc = dane_do_prognozy(d, oid, nowe, stacja, pobierz_pogode, godzin=24 * dni)
+        od = nowe["czas"].min() if nowe is not None and len(nowe) else None
+        for k in range(2, dni + 1):
+            model, meta = wczytaj_model(k)
+            pk = dd["prognoza_dni"]
+            pk = pk[pk["dni"] == k].drop(columns="dni") if pk is not None and len(pk) else pd.DataFrame(columns=["stacja", "czas"])
+            ddk = dict(dd, prognoza=_uzupelnij(pk, dd["prognoza_biezaca"]))
+            wk = prognozuj(model, meta, ddk, oid)
+            okno = przyszlosc[24 * (k - 1): 24 * k]
+            czesci.append(wk[wk["czas"].isin(okno)].assign(dzien_naprzod=k))
+            if od is not None:
+                b = wk[wk["czas"] >= od].dropna(subset=["rzeczywiste", "prognoza"]).rename(columns={"rzeczywiste": "kwh"})
+                bledy[k] = round(_wape_doba(b), 2) if len(b) else None
+    tydzien = pd.concat(czesci, ignore_index=True)[["czas", "czas_lokalny", "prognoza", "dzien_naprzod"]]
+    met = dict(met, blad_wg_dni=bledy) if met else {"blad_wg_dni": bledy}
+    return wynik, met, mies, jutro, tydzien, bledy
+
+
 def _obiekt_z_nazwy(sciezka):
     m = re.search(r"(PNB\d+|PZ\d+|ZMP|CH_T|RU_W|RU_ZMP)", Path(sciezka).stem, re.I)
     return {"PNB1": "RY_PNB1", "PZ1": "RY_PZ1", "ZMP": "RU_ZMP"}.get(m.group(1).upper(), m.group(1).upper()) if m \
@@ -346,17 +457,24 @@ def main(argv=None):
     ap.add_argument("--stacja", choices=list(POGODA_PUNKTY), help="punkt pogody (domyślnie z bazy, inaczej RY)")
     ap.add_argument("--koniec-godziny", action="store_true", help="format prosty: czas = koniec godziny")
     ap.add_argument("--bez-pogody-biezacej", action="store_true", help="nie pobieraj bieżącej prognozy z internetu")
+    ap.add_argument("--dni", type=int, default=1, help="ile dni naprzód (1–7); przy --trenuj: trenuj modele 1..dni")
     ap.add_argument("--uczciwie", action="store_true",
                     help="backtest na modelu trenowanym BEZ okresu z pliku (trening od nowa, ok. 1–2 min)")
     a = ap.parse_args(argv)
 
     if a.trenuj or not (MODELE / f"{WARIANT}.json").exists():
         from .dane import wczytaj
-        print("== Trening modelu na wszystkich danych z bazy")
-        _, meta = trenuj(wczytaj())
-        print(f"  {meta['wariant']}: {meta['drzew']} drzew, {meta['godzin']:,} godzin, obiekty {', '.join(meta['obiekty'])}")
-        print(f"  WAPE dobowe na walidacji (ostatnie 10% czasu obiektów): {meta['wape_doba_walidacja']}%")
-        print(f"  zapisano: {MODELE / (WARIANT + '.json')}")
+        d_baza = wczytaj()
+        for k in range(1, max(1, min(7, a.dni)) + 1):
+            print(f"== Trening modelu na {k} dni naprzód (wszystkie dane z bazy)")
+            _, meta = trenuj(d_baza, dni=k)
+            print(f"  {meta['drzew']} drzew, {meta['godzin']:,} godzin, parametry: {meta['parametry']}, "
+                  f"WAPE dobowe na walidacji: {meta['wape_doba_walidacja']}%  →  {MODELE / (plik_modelu(k) + '.json')}")
+        if a.dni > 1:
+            from .dlugi import trenuj as trenuj_dlugi
+            print("== Trening planu na 2 miesiące (model dzienny, P10 / P50 / P90)")
+            _, md = trenuj_dlugi(d_baza)
+            print(f"  {md['wierszy']:,} wierszy (start × dzień docelowy)  →  {MODELE / 'dlugoterminowy.json'}")
         if not (a.plik or a.obiekt):
             return
     if not (a.plik or a.obiekt):
@@ -367,8 +485,13 @@ def main(argv=None):
         nowe, rodzaj = wczytaj_plik(a.plik, a.koniec_godziny)
     oid = a.obiekt or (nowe["obiekt_id"].iloc[0] if nowe is not None and "obiekt_id" in nowe else _obiekt_z_nazwy(a.plik))
     print(f"== Prognoza: {oid} | źródło: {rodzaj}" + (f" ({len(nowe):,} h z pliku)" if nowe is not None else ""))
-    wynik, met, mies, jutro = uruchom(oid, nowe, stacja=a.stacja, pobierz_pogode=not a.bez_pogody_biezacej,
-                                      uczciwie=a.uczciwie)
+    if a.dni > 1:
+        wynik, met, mies, jutro, tydzien, bledy = uruchom_dni(oid, nowe, stacja=a.stacja, pobierz_pogode=not a.bez_pogody_biezacej,
+                                                              uczciwie=a.uczciwie, dni=a.dni)
+    else:
+        wynik, met, mies, jutro = uruchom(oid, nowe, stacja=a.stacja, pobierz_pogode=not a.bez_pogody_biezacej,
+                                          uczciwie=a.uczciwie)
+        tydzien, bledy = None, None
     if nowe is None:
         print("\n  (bez pliku nie liczymy backtestu – model widział dane z bazy w treningu)")
     if met and met["widziane_w_treningu_proc"] > 0:
@@ -390,6 +513,12 @@ def main(argv=None):
           f"{jutro['czas_lokalny'].max():%Y-%m-%d %H:%M} | razem {jutro['prognoza'].sum():.1f} kWh")
     print(jutro.assign(godzina=jutro["czas_lokalny"].dt.strftime("%d.%m %H:%M"))[["godzina", "prognoza"]]
           .round(2).to_string(index=False))
+    if tydzien is not None:
+        print(f"\n== Prognoza na {tydzien['dzien_naprzod'].max()} dni (każdy dzień liczony modelem na tyle dni naprzód)")
+        g = tydzien.groupby("dzien_naprzod").agg(od=("czas_lokalny", "min"), kwh=("prognoza", "sum"))
+        for k, r in g.iterrows():
+            b = bledy.get(k)
+            print(f"  dzień +{k}  od {r['od']:%d.%m %H:%M}  {r['kwh']:7.1f} kWh" + (f"   (błąd na danych z pliku: {b}%)" if b is not None else ""))
     print(f"\nWyniki: {WYNIKI / 'prognoza'}")
 
 

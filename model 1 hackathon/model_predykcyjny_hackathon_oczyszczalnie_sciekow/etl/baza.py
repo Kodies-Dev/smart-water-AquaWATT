@@ -7,7 +7,7 @@ from sqlalchemy import create_engine, text
 from .config import DB_URL
 
 SCHEMA = Path(__file__).resolve().parents[1] / "sql" / "schema.sql"
-TABELE = ["alarmy", "kalendarz", "prognoza_pogody_godz", "pogoda_godz", "opad_godz", "scada_godz", "przeplyw_godz", "energia_mies", "energia_godz", "obiekty"]
+TABELE = ["alarmy", "kalendarz", "prognoza_pogody_dni", "prognoza_pogody_godz", "pogoda_godz", "opad_godz", "scada_godz", "przeplyw_godz", "energia_mies", "energia_godz", "obiekty"]
 
 
 def polacz():

@@ -93,6 +93,38 @@ def prognoza(log):
     return pd.concat(wynik, ignore_index=True)
 
 
+DNI_PROGNOZY = 7     # Previous Runs API: prognozy wydane 1..7 dni wcześniej
+
+
+def prognoza_dni(log, dni=DNI_PROGNOZY):
+    """Archiwum prognoz pogody wydanych 1..dni dni przed daną godziną (previous_day1..7) – do uczciwej prognozy
+    i oceny na K dni naprzód. Wiersz = (stacja, czas, dni, opad, deszcz, śnieg, temperatura)."""
+    do = (pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=1)).date().isoformat()
+    zestawy = [list(ZMIENNE_PROGNOZA), ["opad_mm", "temp_c"]]
+    wynik = []
+    for stacja, (lat, lon) in POGODA_PUNKTY.items():
+        for kolumny in zestawy:
+            zmienne = [f"{ZMIENNE_PROGNOZA[k]}_previous_day{n}" for n in range(1, dni + 1) for k in kolumny]
+            params = {"latitude": lat, "longitude": lon, "start_date": PROGNOZA_OD, "end_date": do, "hourly": ",".join(zmienne)}
+            try:
+                dane, skad = _pobierz_json(URL_PROGNOZA, params, CACHE / f"openmeteo_prognoza{dni}dni_{stacja}.json")
+                break
+            except requests.HTTPError:
+                if kolumny == zestawy[-1]:
+                    raise
+        h = pd.DataFrame(dane["hourly"])
+        czas = pd.to_datetime(h.pop("time")).dt.tz_localize("UTC")
+        for n in range(1, dni + 1):
+            c = pd.DataFrame({"stacja": stacja, "czas": czas, "dni": n})
+            for k in ZMIENNE_PROGNOZA:
+                c[k] = h.get(f"{ZMIENNE_PROGNOZA[k]}_previous_day{n}")
+            c = c.dropna(subset=list(ZMIENNE_PROGNOZA), how="all")
+            wynik.append(c)
+        log(f"Prognoza {dni} dni {stacja}", None, len(czas) * dni, sum(len(w) for w in wynik[-dni:]),
+            f"{skad} | wyprzedzenie 1–{dni} dni | zmienne: {', '.join(kolumny)}")
+    return pd.concat(wynik, ignore_index=True)
+
+
 def _w_okresach(dni, okresy):
     m = pd.Series(False, index=dni)
     for od, do in okresy:

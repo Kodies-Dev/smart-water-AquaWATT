@@ -11,6 +11,7 @@ holidays>=0.70
 xgboost-cpu>=2.1; sys_platform == "linux"
 xgboost>=2.0; sys_platform != "linux"
 scikit-learn>=1.4
+optuna>=3.6
 matplotlib>=3.7
 # aplikacja (Streamlit, na bazie Detektora Anomalii GUS)
 streamlit>=1.40

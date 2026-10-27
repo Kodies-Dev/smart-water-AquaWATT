@@ -71,11 +71,15 @@ def main():
     fa_ry = krok("RY faktury", ry.faktury)
     pogoda = krok("Pogoda (Open-Meteo)", zewnetrzne.pogoda)
     prognoza = krok("Prognoza pogody z dnia poprzedniego (Open-Meteo)", zewnetrzne.prognoza)
+    prognoza_dni = krok("Prognozy pogody wydane 1–7 dni wcześniej (Open-Meteo)", zewnetrzne.prognoza_dni)
     kal = krok("Kalendarz", zewnetrzne.kalendarz)
 
     kontrola_faktur(en_ry, fa_ry)
     zewnetrzne.kontrola_opadu(opad, pogoda, "pogoda ERA5")
     zewnetrzne.kontrola_opadu(opad, prognoza, "prognoza z dnia poprzedniego")
+    if prognoza_dni is not None and len(prognoza_dni):
+        for n in sorted(prognoza_dni["dni"].unique()):
+            zewnetrzne.kontrola_opadu(opad, prognoza_dni[prognoza_dni["dni"] == n], f"prognoza {n} dni wcześniej")
 
     print("\n== zapis do bazy")
     zapisz(engine, razem(en_ch, en_ru, en_ry), "energia_godz")
@@ -86,6 +90,7 @@ def main():
     zapisz(engine, al_ch, "alarmy")
     zapisz(engine, pogoda, "pogoda_godz")
     zapisz(engine, prognoza, "prognoza_pogody_godz")
+    zapisz(engine, prognoza_dni, "prognoza_pogody_dni")
     zapisz(engine, kal, "kalendarz")
     zapisz(engine, pd.DataFrame(LOG), "etl_log")
     print(f"\nGotowe w {(pd.Timestamp.now(tz='UTC') - START).total_seconds():.0f} s")

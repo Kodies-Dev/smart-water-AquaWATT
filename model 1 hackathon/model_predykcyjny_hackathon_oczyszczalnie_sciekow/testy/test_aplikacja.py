@@ -30,7 +30,7 @@ def _uruchom_detekcje(at):
 def test_start_bez_danych():
     at = AppTest.from_file(APP, default_timeout=120).run()
     assert not at.exception
-    assert any("Brak danych z bazy" in i.value for i in at.info)
+    assert any("Wgraj plik" in i.value for i in at.info)                      # ekran startowy jak w Detektorze GUS
 
 
 def test_detekcja_z_bazy_i_raport(d, monkeypatch):
@@ -79,8 +79,9 @@ def test_prognoza_szczegoly(d, tmp_path, monkeypatch):
     at.run()
     assert any("Najpierw przygotuj prognozę" in i.value for i in at.info)          # szczegóły bez prognozy: wskazówka
     # dwa pliki tej samej pompowni (dwa okresy) -> jedna seria
-    at.file_uploader(key="pp_plik").set_value([("RU_W_cz1.csv", _plik_csv(d, "RU_W", 4, od_konca=4), "text/csv"),
-                                               ("RU_W_cz2.csv", _plik_csv(d, "RU_W", 4), "text/csv")]).run()
+    at.file_uploader(key="pp_pliki").set_value([("RU_W_cz1.csv", _plik_csv(d, "RU_W", 4, od_konca=4), "text/csv"),
+                                                ("RU_W_cz2.csv", _plik_csv(d, "RU_W", 4), "text/csv")]).run()
+    [b for b in at.button if b.label == "Wczytaj pliki"][0].click().run()
     assert not at.exception, [e.value for e in at.exception]
     dp = at.session_state["dane_prognozy"]
     assert dp["oid"] == "RU_W" and "+ 1 inne" in dp["zrodlo"] and len(dp["nowe"]) == 24 * 7 * 8
@@ -141,7 +142,9 @@ def test_widok_klienta_twoja_prognoza(d, tmp_path, monkeypatch):
     import sys
     sys.path.insert(0, str(ROOT / "aplikacja"))
     import model.prognoza as P
-    from backend_ml_llm.podsumowanie_klienta import podsumuj, excel
+    from backend_ml_llm.podsumowanie_klienta import podsumuj
+    from backend_ml_llm.raport_excel import raport_excel
+    from openpyxl import load_workbook
     monkeypatch.setattr(P, "MODELE", tmp_path)
     monkeypatch.setattr(P.requests, "get", lambda *a, **k: (_ for _ in ()).throw(ConnectionError("bez sieci")))
     P.trenuj(d)
@@ -152,9 +155,11 @@ def test_widok_klienta_twoja_prognoza(d, tmp_path, monkeypatch):
     prog = ("RY_PZ1",) + P.uruchom("RY_PZ1", nowe, d=d, pobierz_pogode=False, uczciwie=True, katalog=tmp_path / "w")
     s, dz = podsumuj(prog, dict(zrodlo="test.csv", stacja="RY"), d)
     assert s["dni"] >= 40 and 0 < s["wape"] < 50 and "Średnio myliliśmy się" in s["tekst"] and "kWh" in s["tekst"]
-    arkusze = pd.read_excel(io.BytesIO(excel(s, dz, prog[4], prog[3], prog[1])), sheet_name=None)
-    assert {"Podsumowanie", "Jutro godzinowo", "Dzień po dniu", "Godzinowo (pełne)"} <= set(arkusze)
-    assert len(arkusze["Jutro godzinowo"]) == 24
+    wb = load_workbook(io.BytesIO(raport_excel("RY_PZ1", "test.csv", s, dz, prog[4], prog[3], prog[1], prog[2])))
+    assert {"Podsumowanie", "Jutro godzinowo", "Dzień po dniu", "Miesięcznie", "Godzinowo"} <= set(wb.sheetnames)
+    assert wb["Jutro godzinowo"].max_row == 3 + 24                                       # nagłówek + 24 godziny
+    assert len(wb["Dzień po dniu"]._charts) == 2 and len(wb["Podsumowanie"]._charts) == 1
+    assert str(wb["Podsumowanie"]["B5"].value).startswith("=SUM(")                    # sumy jako formuły Excela
 
     # 2. aplikacja: dane wybrane w panelu bocznym -> zakładka Dane -> Prognoza (jeden przycisk)
     at = AppTest.from_file(APP, default_timeout=300)
@@ -164,15 +169,13 @@ def test_widok_klienta_twoja_prognoza(d, tmp_path, monkeypatch):
     at.run()
     assert not at.exception, [x.value for x in at.exception]
     assert any("Wgraj plik" in i.value for i in at.info)                     # bez danych: wskazówka
-    at.file_uploader(key="pp_plik").set_value([("RY_PZ1_test.csv", _plik_csv(d, "RY_PZ1"), "text/csv")]).run()
+    at.file_uploader(key="pp_pliki").set_value([("RY_PZ1_test.csv", _plik_csv(d, "RY_PZ1"), "text/csv")]).run()
+    [b for b in at.button if b.label == "Wczytaj pliki"][0].click().run()     # jak w Detektorze GUS
     assert not at.exception, [x.value for x in at.exception]
     assert at.selectbox(key="pp_obiekt").value == "RY_PZ1"                   # pompownia wykryta z nazwy pliku
-    assert at.session_state["aktywny"] == "dane_do_prognozy"                 # zakładka Dane pokazuje dane do prognozy
-    assert at.selectbox(key="dp_aktywny").value == "dane_do_prognozy"        # „Zbiór aktywny” jak w GUS
-    at.selectbox(key="dp_aktywny").set_value("x").run()                      # przełączenie na inny zbiór
-    assert not at.exception and at.session_state["aktywny"] == "x"
-    at.selectbox(key="dp_aktywny").set_value("dane_do_prognozy").run()
-    assert any(m.label == "Średnio na dobę" for m in at.metric)
+    assert at.session_state["aktywny"] == "RY_PZ1_test"                      # wczytany plik = zbiór aktywny (Dane, Wykresy)
+    assert any(s.label == "Zbior aktywny" for s in at.selectbox)
+    assert any(m.label == "Średnio na dobę" for m in at.metric)              # podsumowanie danych w zakładce Prognoza
     assert all(not m.proto.delta for m in at.tabs[0].metric)                 # kafelki w zakładce Dane bez strzałek
     [b for b in at.button if b.label == "Przygotuj prognozę"][0].click().run()
     assert not at.exception, [x.value for x in at.exception]

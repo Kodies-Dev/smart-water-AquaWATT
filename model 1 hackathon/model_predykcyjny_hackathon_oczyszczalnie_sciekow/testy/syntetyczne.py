@@ -44,7 +44,15 @@ def dane(seed=7):
             sc.append(pd.DataFrame({"obiekt_id": o, "czas": tt, "praca_pomp_h": kwh / 5, "poziom_max": 140.0}))
     prog = pogoda[["stacja", "czas", "opad_mm", "deszcz_mm", "snieg_cm", "temp_c"]].copy()
     prog["opad_mm"] = prog.groupby("stacja")["opad_mm"].shift(1).fillna(0) * rng.uniform(0.5, 1.5, len(prog))
+    # archiwum prognoz wydanych 1..7 dni wcześniej: im dalej, tym większy błąd
+    dni = []
+    for n in range(1, 8):
+        p = pogoda[["stacja", "czas", "opad_mm", "deszcz_mm", "snieg_cm", "temp_c"]].copy()
+        p["opad_mm"] = p["opad_mm"] * rng.uniform(1 - 0.12 * n, 1 + 0.12 * n, len(p)).clip(0)
+        p["temp_c"] = p["temp_c"] + rng.normal(0, 0.5 * n, len(p))
+        dni.append(p.assign(dni=n))
+    prognoza_dni = pd.concat(dni, ignore_index=True)
     return dict(energia=pd.concat(en, ignore_index=True), przeplyw=pd.concat(prz, ignore_index=True),
                 scada=pd.concat(sc, ignore_index=True),
                 opad_ru=pogoda[pogoda["stacja"] == "RU"][["czas", "opad_mm"]].rename(columns={"opad_mm": "mm"}),
-                pogoda=pogoda, prognoza=prog, kalendarz=kal, obiekty=obiekty)
+                pogoda=pogoda, prognoza=prog, prognoza_dni=prognoza_dni, kalendarz=kal, obiekty=obiekty)

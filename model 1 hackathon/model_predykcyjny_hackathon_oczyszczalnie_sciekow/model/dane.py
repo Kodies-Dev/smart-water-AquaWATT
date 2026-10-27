@@ -23,6 +23,8 @@ def wczytaj():
         "opad_ru": q("select czas, mm from opad_godz where stacja = 'RU'"),
         "pogoda": q("select * from pogoda_godz"),
         "prognoza": _albo_puste(q, "select * from prognoza_pogody_godz", ["stacja", "czas", "opad_mm", "deszcz_mm", "snieg_cm", "temp_c"]),
+        "prognoza_dni": _albo_puste(q, "select * from prognoza_pogody_dni",
+                                    ["stacja", "czas", "dni", "opad_mm", "deszcz_mm", "snieg_cm", "temp_c"]),
         "kalendarz": q("select * from kalendarz"),
         "obiekty": q("select * from obiekty"),
     }
